@@ -1,6 +1,6 @@
 
 from dataclasses import dataclass
-from .custom_types import File, ChunkSize, Permissions, FileIdentifierLength, StripTags
+from .custom_types import BunkrrFile, ChunkSize, Permissions, FileIdentifierLength, StripTags
 
 @dataclass
 class BunkrrResponse:
@@ -8,7 +8,7 @@ class BunkrrResponse:
 
 @dataclass
 class UploadResponse(BunkrrResponse):
-    files: list[File]
+    files: list[BunkrrFile]
 
 
 @dataclass

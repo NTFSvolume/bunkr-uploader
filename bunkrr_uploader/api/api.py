@@ -6,9 +6,9 @@ import os
 import uuid
 from pathlib import Path
 from pprint import pformat
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO, Optional
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, FormData
 from tqdm import tqdm
 from tqdm.asyncio import tqdm_asyncio
 from yarl import URL
@@ -21,6 +21,8 @@ from bunkrr_uploader.api.types.responses import (
     UploadResponse,
     VerifyTokenResponse,
 )
+
+from bunkrr_uploader.api.types.custom_types import  BunkrrFile
 from bunkrr_uploader.util import ProgressFileReader, TqdmUpTo
 
 logger = logging.getLogger(__name__)
@@ -42,8 +44,8 @@ class BunkrrAPI:
         self.download_url_base = URL("https://bunkrr.ru/d/")
 
         # These all need to be initialized later on before the API is used
-        self.max_file_size = None
-        self.chunk_size = None
+        self.max_file_size = 1800
+        self.chunk_size = 20
         self.file_blacklist = []
 
         self.options = options
@@ -57,56 +59,62 @@ class BunkrrAPI:
 
         self.server_sessions = {}
         self.created_folders = {}
-        self.sem = asyncio.Semaphore(max_connections)
+        self._semaphore = asyncio.Semaphore(max_connections)
         self.retries = retries
         self.max_chunk_retries = options.get("chunk_retries") or 1
 
-    async def get_check(self) -> CheckResponse:
-        async with self._session.get("/api/check") as resp:
+    async def _get_json(self, path: str) -> dict:
+        async with self._session.get(path) as resp:
             response = await resp.json()
             return response
+
+    async def _post(self, path: str, *, data: FormData | dict | None = None) -> dict:
+        data = data or {}
+        data["token"] = data.get("token", self._token)
+        async with self._session.post(path, data=data) as resp:
+            response = await resp.json()
+            return response
+        
+    """----------------------------------------------------------------------------------------------"""
+
+    async def get_check(self) -> CheckResponse:
+        response = await self._get_json("/api/check")
+        return CheckResponse(**response)
 
     async def get_node(self) -> NodeResponse:
-        async with self._session.get("/api/node") as resp:
-            response = await resp.json()
-            return response
+        response = await self._get_json("/api/node")
+        return NodeResponse(**response)
 
     async def verify_token(self) -> VerifyTokenResponse:
-        data = {"token": self._token}
-        async with self._session.post("/api/tokens/verify", data=data) as resp:
-            response = await resp.json()
-            return response
+        response = await self._post("/api/tokens/verify")
+        return VerifyTokenResponse(**response)
 
     async def get_albums(self) -> AlbumsResponse:
-        async with self._session.get("/api/albums") as resp:
-            response = await resp.json()
-            return response
+        response = await self._get_json("/api/albums")
+        return AlbumsResponse(**response)
 
     async def create_album(
-        self, name: str, description: str, public: bool = True, download: bool = True
+        self, name: str, *, description: str = "", public: bool = True, download: bool = True
     ) -> CreateAlbumResponse:
         data = {"name": name, "description": description, "public": public, "download": download}
-        async with self._session.post("/api/albums", json=data) as resp:
-            response = await resp.json()
-            return response
+        response = await self._post("/api/albums", data=data)
+        return CreateAlbumResponse(**response)
 
     async def upload_chunks(
         self,
-        file_data: Union[BinaryIO, ProgressFileReader],
-        file_name: str,
-        file_uuid: str,
-        file_size: int,
-        session,
+        file_data: BinaryIO | ProgressFileReader,
+        file: BunkrrFile,
         server: str,
     ) -> None:
-        total_chunks = (file_size + self.chunk_size - 1) // self.chunk_size
+        self.chunk_size = self.chunk_size or 20
+        total_chunks = (file.size + self.chunk_size - 1) // self.chunk_size
         chunk_index = 0
         dzchunkbyteoffset = 0
 
         # Iterates all chunks
         while chunk_index < total_chunks:
             with tqdm.external_write_mode():
-                logger.debug(f"Processing chunk {chunk_index + 1}/{total_chunks} for {file_name}")
+                logger.debug(f"Processing chunk {chunk_index + 1}/{total_chunks} for {file.name}")
 
             chunk_data = file_data.read(self.chunk_size)
             chunk_upload_success = False
@@ -117,117 +125,106 @@ class BunkrrAPI:
 
             # likely using https://gitlab.com/meno/dropzone/-/wikis/faq#chunked-uploads
             # https://github.com/Dodotree/DropzonePHPchunks/issues/3
-            data = aiohttp.FormData()
-            data.add_field("dzuuid", file_uuid)
+            data = FormData()
+            data.add_field("dzuuid", file.uuid)
             data.add_field("dzchunkindex", str(chunk_index))
-            data.add_field("dztotalfilesize", str(file_size))
+            data.add_field("dztotalfilesize", str(file.size))
             data.add_field("dzchunksize", str(self.chunk_size))
             data.add_field("dztotalchunkcount", str(total_chunks))
             data.add_field("dzchunkbyteoffset", str(dzchunkbyteoffset))
             data.add_field(
                 "files[]",
                 chunk_data,
-                filename=file_name,
+                filename=file.name,
                 content_type="application/octet-stream",
             )
 
             # Retries chunks if they ever fail
             while chunk_upload_attempt < self.max_chunk_retries and chunk_upload_success is False:
                 try:
-                    async with session.post("/api/upload", data=data) as resp:
-                        response = await resp.json()
-                        if response.get("success"):
-                            chunk_index += 1
-                            dzchunkbyteoffset += self.chunk_size
-                            chunk_upload_success = True
-                        else:
-                            msg = f"{file_uuid} failed uploading chunk #{chunk_index}/{total_chunks} to {server} [{chunk_upload_attempt}/{self.max_chunk_retries}]"
-                            with tqdm.external_write_mode():
-                                logger.error(msg)
-                            raise Exception(msg)
+                    response = await self._post("/api/upload", data=data)
+                    if response.get("success"):
+                        chunk_index += 1
+                        dzchunkbyteoffset += self.chunk_size
+                        chunk_upload_success = True
+                    else:
+                        msg = f"{file.uuid} failed uploading chunk #{chunk_index}/{total_chunks} to {server} [{chunk_upload_attempt}/{self.max_chunk_retries}]"
+                        with tqdm.external_write_mode():
+                            logger.error(msg)
+                        raise Exception(msg)
                 except Exception:
                     chunk_upload_attempt += 1
 
             if chunk_upload_success is False:
-                msg = f"Failed uploading chunks for {file_uuid} too many times to {server}, cannot continue"
+                msg = f"Failed uploading chunks for {file.uuid} too many times to {server}, cannot continue"
                 with tqdm.external_write_mode():
                     logger.error(msg)
                 raise Exception(msg)
 
     # TODO: This should probably move out of API
-    async def upload(self, file: Path, album_id: Optional[str] = None) -> UploadResponse:
+    async def upload(self, file_path: Path, album_id: str | None = None) -> UploadResponse:
+        file = BunkrrFile.from_path(file_path, album_id=album_id)
         metadata = {
             "success": False,
-            "files": [
-                {
-                    "fileName": file.name,
-                    "albumid": album_id,
-                    "filePath": str(file),
-                    "filePathMD5": hashlib.md5(str(file).encode("utf-8")).hexdigest(),
-                    "fileNameMD5": hashlib.md5(str(file.name).encode("utf-8")).hexdigest(),
-                    "uploadSuccess": None,
-                }
-            ],
+            "files": [file.dump()]
         }
-        file_size = os.stat(file).st_size
-        file_mimetype = mimetypes.guess_type(file)[0] or "application/octet-stream"
+
         node_response = await self.get_node()
-        if not node_response.get("success"):
+        if not node_response.success:
             with tqdm.external_write_mode():
                 logger.error(f"Failed to get server to upload to: {pformat(node_response)}")
-            return metadata
-        server = "/".join(node_response["url"].split("/")[:3])
+            return UploadResponse(**metadata)
+
+        server = "/".join(node_response.url.split("/")[:3])
 
         if server not in self.server_sessions:
             with tqdm.external_write_mode():
                 logger.info(f"Using new server connection to {server}")
-            self.server_sessions[server] = aiohttp.ClientSession(server, headers=self._session_headers)
+            self.server_sessions[server] = ClientSession(server, headers=self._session_headers)
 
         session = self.server_sessions[server]
 
         headers = {"albumid": album_id} if album_id else None
 
-        file_uuid = str(uuid.uuid4())
-
-        async with self.sem:
+        async with self._semaphore:
             retries = 0
             while retries < self.retries:
                 try:
-                    with open(file, "rb") as file_data:
+                    with open(file_path, "rb") as file_data:
                         with TqdmUpTo(
                             unit="B",
                             unit_scale=True,
                             unit_divisor=1024,
                             miniters=1,
-                            desc=f"{file.name} [{retries + 1}/{self.retries}]",
+                            desc=f"{file_path.name} [{retries + 1}/{self.retries}]",
                         ) as t:
-                            with ProgressFileReader(filename=file, read_callback=t.update_to) as file_data:
-                                if file_size <= self.chunk_size:
+                            with ProgressFileReader(filename=file_path, read_callback=t.update_to) as file_data:
+                                if file.size <= self.chunk_size:
                                     chunk_data = file_data.read(self.chunk_size)
-                                    data = aiohttp.FormData()
+                                    data = FormData()
                                     data.add_field(
-                                        "files[]", chunk_data, filename=file.name, content_type=file_mimetype
+                                        "files[]", chunk_data, filename=file_path.name, content_type=file.mimetype
                                     )
 
                                     async with session.post("/api/upload", data=data, headers=headers) as resp:
                                         response = await resp.json()
                                         if not response.get("success"):
-                                            raise Exception(f"{file.name} failed uploading without chunks")
+                                            raise Exception(f"{file_path.name} failed uploading without chunks")
 
                                         return response
                                 else:
                                     with tqdm.external_write_mode():
-                                        logger.debug(f"{file.name} will use UUID {file_uuid}")
+                                        logger.debug(f"{file_path.name} will use UUID {file.uuid}")
                                     await self.upload_chunks(
-                                        file_data, file.name, file_uuid, file_size, session, server
+                                        file_data, file, server
                                     )
 
                                     upload_data = {
                                         "files": [
                                             {
-                                                "uuid": file_uuid,
+                                                "uuid": file.uuid,
                                                 "original": file.name,
-                                                "type": file_mimetype,
+                                                "type": file.mimetype,
                                                 "albumid": album_id or "",
                                                 "filelength": "",
                                                 "age": "",
@@ -242,7 +239,7 @@ class BunkrrAPI:
                                             ) as resp:
                                                 response = await resp.json()
                                                 if response.get("success") is False:
-                                                    msg = f"{file_uuid} failed finishing chunks to {server} [{finish_chunks_attempt + 1}/{self.max_chunk_retries}]\n{pformat(response)}"
+                                                    msg = f"{file.uuid} failed finishing chunks to {server} [{finish_chunks_attempt + 1}/{self.max_chunk_retries}]\n{pformat(response)}"
                                                     with tqdm.external_write_mode():
                                                         logger.error(msg)
                                                     raise Exception(msg)
@@ -256,9 +253,9 @@ class BunkrrAPI:
                                     # TODO: Should probably return here
                 except Exception:
                     with tqdm.external_write_mode():
-                        logger.exception(f"Upload failed for {file.name} to {server} Attempt #{retries + 1}")
+                        logger.exception(f"Upload failed for {file_path.name} to {server} Attempt #{retries + 1}")
                     retries += 1
-            return {"success": False, "files": [{"name": file.name, "url": ""}]}
+            return {"success": False, "files": [{"name": file_path.name, "url": ""}]}
 
     # TODO: This should probably move out of API
     async def upload_files(self, paths: list[Path], folder_id: Optional[str] = None) -> list[UploadResponse]:
