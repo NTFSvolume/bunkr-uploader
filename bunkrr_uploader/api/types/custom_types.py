@@ -39,6 +39,18 @@ class Permissions:
     admin: bool
     superadmin: bool
 
+@dataclass(frozen=True)
+class Chunk:
+    data: bytes
+    index: int
+    total: int
+
+    @property
+    def byte_range(self):
+        start=self.index * len(self.data)
+        end=(self.index + 1) * len(self.data)
+        return (start, end)
+
 
 @dataclass
 class BunkrrFile:
