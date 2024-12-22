@@ -2,7 +2,7 @@
 name = "bunkrr-uploader"
 version = "0.1.0"
 description = "Async Bunkrr uploader"
-authors = ["NTFSvolume"]
+authors = ["NTFSvolume", "alexmi256"]
 license = "MIT"
 readme = "README.md"
 

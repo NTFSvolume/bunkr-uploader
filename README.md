@@ -21,3 +21,5 @@ WIP
 - [ ] Add tests
 - [ ] Add github runners for tests
 - [ ] Recursive directory upload support
+
+Original code by [alexmi256](https://github.com/alexmi256/bunkrr-uploader)
