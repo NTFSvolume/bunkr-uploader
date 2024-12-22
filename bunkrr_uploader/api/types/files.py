@@ -42,4 +42,14 @@ class FileInfo:
         self.mimetype = mimetypes.guess_type(self.path)[0] or "application/octet-stream"
         self.uuid = str(uuid4())
 
+    def dump_json(self) -> dict:
+        return {
+            "uuid": self.uuid,
+            "original": self.original_name,
+            "type": self.mimetype,
+            "albumid": self.album_id or "",
+            "filelength": "",
+            "age": "",
+        }
+
 

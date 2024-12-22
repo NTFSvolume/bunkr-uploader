@@ -44,7 +44,7 @@ class BunkrrResponse(BaseModel):
 
 class UploadItemResponse(BunkrrResponse):
     name: str
-    url: HttpURL
+    url: HttpURL | None
 
 class UploadResponse(BunkrrResponse):
     files: list[UploadItemResponse]

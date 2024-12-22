@@ -50,11 +50,12 @@ class BunkrrAPI:
             logger.debug(response)
             return response
 
-    async def _post(self, path: str, *, data: FormData | dict | None = None) -> dict:
+    async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
         data = data or {}
         if isinstance(data, dict):
             data["token"] = data.get("token") or self._token
-        async with self._semaphore, self._session.post(path, data=data) as resp:
+        session = self.server_sessions.get(server) or self._session
+        async with self._semaphore, session.post(path, data=data) as resp:
             resp.raise_for_status()
             response = await resp.json()
             logger.debug(response)
@@ -68,7 +69,7 @@ class BunkrrAPI:
 
     """----------------------------------------------------------------------------------------------"""
 
-    def add_server_session(self, server_session: dict[str, ClientSession]):
+    def add_server_session(self, server_session: dict[URL, ClientSession]):
         self._server_sessions.update(server_session)
 
     async def check(self) -> CheckResponse:
@@ -101,7 +102,7 @@ class BunkrrAPI:
         response = await self._post("/albums", data=data)
         return CreateAlbumResponse(**response)
 
-    async def upload(self, file: FileInfo | Path, album_id: str | None = None) -> UploadResponse:
+    async def upload(self, file: FileInfo | Path, server: URL,  album_id: str | None = None) -> UploadResponse:
         if isinstance(file,Path):
             file = FileInfo(file, album_id=album_id)
         file_info = file
@@ -115,5 +116,10 @@ class BunkrrAPI:
         if album_id:
             data.add_field("albumid", file_info.album_id)
 
-        response = await self._post("/upload", data=data)
+        response = await self._post("/upload", data=data, server=server)
+        return UploadResponse(**response)
+
+    async def finish_chunks(self, file_info: FileInfo):
+        data = {"files": [file_info.dump_json()]}
+        response = await self._post("/upload/finishchunks", data=data)
         return UploadResponse(**response)
