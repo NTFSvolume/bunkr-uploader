@@ -34,6 +34,9 @@ import asyncio
 from aiohttp import FormData
 from typing import Optional, Dict, Any
 from collections.abc import AsyncIterator
+from datetime import timedelta
+
+from pydantic import ByteSize
 
 from bunkrr_uploader.api.types.responses import (
     AlbumsResponse,
@@ -60,137 +63,98 @@ class BunkrrUploader:
     def __init__(
         self,
         token: str,
+        *
+        ,
         max_connections: int = 1,
-        retries: int = 1,
-        options: Optional[dict[str, Any]] = None,
+        chunk_size: ByteSize | None = None,
+        upload_retries: int = 1,
+        chunk_retries: int = 2,
+        upload_delay: float = 0.5,
+        **kwargs: dict[str, Any]
     ):
-        if options is None:
-            options = {}
-        self.options = options
-        self.api = BunkrrAPI(token, max_connections, retries, options)
+        self.api = BunkrrAPI(token, chunk_size)
+        assert max_connections <= self.api.RATE_LIMIT
+        self._max_connections = max_connections
+        self._upload_retries = upload_retries
+        self._chunk_retries = chunk_retries
+        self.options = kwargs
+        self._upload_delay = upload_delay
         self.temporary_files = []
+        self._ready = False
 
-    async def init(self):
-        raw_req = await self.api.check()
-        logger.debug(dict(raw_req))
-        max_file_size = raw_req.get("maxSize", "0B")
-        max_chunk_size = raw_req.get("chunkSize", {}).get("max", "0B")
-        default_chunk_size = raw_req.get("chunkSize", {}).get("default", "0B")
-        self.api._file_blacklist.extend(raw_req.get("stripTags", {}).get("blacklistExtensions", []))
+    async def startup(self):
+        await self.api.startup()
+        self._chunk_size = self.api._chunk_size
+        self._ready = True
 
-        # Choose a chunk size, default or max
-        chunk_size = default_chunk_size
-        if self.options.get("use_max_chunk_size"):
-            chunk_size = max_chunk_size
+    def prepare_files(self, files: list[Path]) -> list[FileInfo]:
+        files_to_upload = []
+        for file in files:
+            file_info = FileInfo(file)
+            if file_info.path.suffix.casefold() in self.api.info.stripTags.blacklistExtensions:
+                logger.error(f"File {file} has blacklisted extension {file.suffix}")
 
-        if max_file_size == "0B" or chunk_size == "0B":
-            raise ValueError("Invalid max file size or chunk size")
-
-        # TODO: check if either one is 0 and abort
-
-        units_to_calc = [max_file_size, chunk_size]
-        units_calculated = []
-
-        for unit in units_to_calc:
-            size_str = unit.lower()
-            unit_multiplier = {"b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3, "tb": 1024**4}
-            match = re.match(r"^(\d+)([a-z]+)$", size_str)
-
-            if match:
-                value, unit = match.groups()
-                bytes_size = int(value) * unit_multiplier.get(unit, 1)
-                units_calculated.append(bytes_size)
+            elif file_info.size > self.api.info.maxSize:
+                logger.error(f"File {file} is bigger than max file size {self.api.info.maxSize.human_readable(decimal=True)}")
             else:
-                raise ValueError("Invalid input format")
+                files_to_upload.append(file_info)
 
-        self.api._max_file_size = units_calculated[0]
-        self.api.chunk_size = units_calculated[1]
+        return files_to_upload
 
-    def prepare_file_for_upload(self, file: Path) -> List[Path]:
-        file_size = file.stat().st_size
-
-        # TODO: Truncate the file name if it is too long
-        file_name = (file.name[:240] + "..") if len(file.name) > 240 else file.name
-
-        if file.suffix in self.api._file_blacklist:
-            logger.error(f"File {file} has blacklisted extension {file.suffix}")
-            return []
-
-        if file_size > self.api._max_file_size:
-            # TODO: Create temporary file archive
-            logger.error(f"File {file} is bigger than max file size {self.api._max_file_size}")
-            return []
-
-        return [file]
-
-    async def upload_files(self, path: Path, folder: Optional[str] = None) -> None:
+    async def upload_files2(self, path: Path, recurse: bool = False, album_name: str | None = None) -> None:
+        if not path.exists():
+            raise FileNotFoundError
         if path.is_file():
-            paths = [path]
+            files_to_upload = [path]
+        elif recurse:
+            files_to_upload = sorted([x for x in path.rglob("*") if x.is_file()], key=lambda p: str(p))
         else:
-            logger.warning(f"only files at the root of the input folder will be uploaded (no recursion)")
-            paths = sorted([x for x in path.iterdir() if x.is_file()], key=lambda p: str(p))
-            if folder is None:
-                folder = path.name
-
-        if len(paths) == 0:
-            logger.error("No file paths left to upload")
+            files_to_upload = sorted([x for x in path.iterdir() if x.is_file()], key=lambda p: str(p))
+        if not self._ready:
+            await self.startup()
+        files_to_upload = self.prepare_files(files_to_upload)
+        if not files_to_upload:
+            logger.error("No files left to upload")
             return
 
-        # The server may not accept certain file types and those over a certain size so we need to create temporary files
-        filtered_paths = []
-        for file_path in paths:
-            filtered_paths.extend(self.prepare_file_for_upload(file_path))
-
-        # TODO: Delete the extra created files after upload
-        self.temporary_files = [x for x in filtered_paths if x not in paths]
-
         folder_id = None
-        if folder:
-            existing_folders = await self.api.get_albums()
-            existing_folder = next((x for x in existing_folders["albums"] if x["name"] == folder), None)
-            if existing_folder:
-                folder_id = str(existing_folder["id"])
-            else:
-                logger.debug(f"album '{folder}' does not exists, creating")
-                created_folder = await self.api.create_album(folder, folder)
-                folder_id = str(created_folder["id"])
+        if album_name:
+            existing_albums = await self.api.get_albums()
+            album = next((x for x in existing_albums.albums if x.name == album_name), None)
+            if not album:
+                logger.debug(f"album '{album_name}' does not exists, creating")
+                album = await self.api.create_album(album_name, description=album_name)
+            folder_id = album.id
             logger.debug(f"album id: '{folder_id}'")
 
-        if paths:
-            responses = await self.api.upload_files(filtered_paths, folder_id)
+        responses = await self.api.upload_files(files_to_upload, folder_id)
 
-            if self.options.get("save") and responses:
-                expected_fieldnames = ["albumid", "filePathMD5", "fileNameMD5", "filePath", "fileName", "uploadSuccess"]
-                response_fields = list(
-                    set(expected_fieldnames + list(set().union(*[x.keys() for x in responses[0]["files"] if x])))
-                )
+        if self.options.get("save") and responses:
+            expected_fieldnames = ["albumid", "filePathMD5", "fileNameMD5", "filePath", "fileName", "uploadSuccess"]
+            response_fields = list(
+                set(expected_fieldnames + list(set().union(*[x.keys() for x in responses[0]["files"] if x])))
+            )
 
-                file_name = f"bunkrr_upload_{int(time.time())}.csv"
-                with open(file_name, "w", newline="") as csvfile:
-                    logger.info(f"Saving uploaded files to {file_name}")
-                    csv_writer = csv.DictWriter(csvfile, dialect="excel", fieldnames=response_fields)
-                    csv_writer.writeheader()
-                    for row in responses:
-                        csv_writer.writerow(row["files"][0])
+            file_name = f"bunkrr_upload_{int(time.time())}.csv"
+            with open(file_name, "w", newline="") as csvfile:
+                logger.info(f"Saving uploaded files to {file_name}")
+                csv_writer = csv.DictWriter(csvfile, dialect="excel", fieldnames=response_fields)
+                csv_writer.writeheader()
+                for row in responses:
+                    csv_writer.writerow(row["files"][0])
 
-            else:
-                pprint(responses)
+        else:
+            pprint(responses)
                 
-    async def _upload_chunk(
-        self,
-        file: FileInfo,
-        chunk: ChunkInfo
-    ) -> bool:
-        """
-        Upload a single chunk with retry mechanism
-        """
+    async def _upload_chunk(self, file_info: FileInfo, chunk: ChunkInfo) -> bool:
+        """Upload a single chunk with retry mechanism."""
         dzchunkbyteoffset = self._chunk_size * chunk.index
         for attempt in range(self._chunk_retries):
             data = FormData()
             data.add_fields(
-                ("dzuuid", file.uuid),
+                ("dzuuid", file_info.uuid),
                 ("dzchunkindex", str(chunk.index)),
-                ("dztotalfilesize", str(file.size)),
+                ("dztotalfilesize", str(file_info.size)),
                 ("dzchunksize", str(self._chunk_size)),
                 ("dztotalchunkcount", str(chunk.total)),
                 ("dzchunkbyteoffset", str(dzchunkbyteoffset))
@@ -198,30 +162,27 @@ class BunkrrUploader:
             data.add_field(
                 "files[]",
                 chunk.data,
-                filename=file.name,
+                filename=file_info.upload_name,
                 content_type="application/octet-stream",
             )
             try:
-                async with self._session.post("/api/upload", data=data) as response:
-                    response.raise_for_status()
-                    if response.status == 200:
-                        return True
-                    
+                response = await self.api._post("/upload", data=data)
+                response = UploadResponse(**response)
+                return response.success
+
             except Exception as e:
                 if attempt < self._chunk_retries - 1:
-                    msg = f"{file.uuid} failed uploading chunk #{chunk.index}/{chunk.total} to {self.server} [{attempt+1}/{self._chunk_retries}]"
+                    msg = f"{file_info.uuid} failed uploading chunk #{chunk.index}/{chunk.total} to {self.server} [{attempt+1}/{self._chunk_retries}]"
                     logger.error(msg)
-                    await asyncio.sleep(self._retry_delay)
+                    await asyncio.sleep(self._upload_delay)
                     continue
 
-                raise ChunkUploadError(chunk) from e
+                raise FileUploadError(file_info) from e
         
         return False
     
     async def _iter_chunks_read(self, file: FileInfo) -> AsyncIterator[ChunkInfo]:
-        """
-        Iterate over file chunks using read method
-        """
+        """Iterate over file chunks using read method."""
         total_chunks = (file.size + self._chunk_size - 1) // self._chunk_size
         async with aiofiles.open(file.path, mode='rb') as file_data:
             index = 0
@@ -232,38 +193,29 @@ class BunkrrUploader:
                 yield ChunkInfo(chunk_data,index, total_chunks)
                 index +=1
 
-    async def upload_file(
-        self, file_path: Path, album_id: str | None = None
-
-    ) -> bool:
-        """
-        Upload a file in chunks with retry mechanism
-        """
-        file = FileInfo.from_path(file_path, album_id=album_id)
-        
+    async def upload_file(self, file_path: Path, album_id: str | None = None) -> bool:
+        """Upload a file in chunks with retry mechanism."""
+        file_info = FileInfo(file_path, album_id=album_id)
         for attempt in range(self._upload_retries):
-            if file.size <= self._chunk_size:
+            try:
+                if file_info.size <= self._chunk_size:
+                    await self.api.upload(file_info)
+                else:
+                    async for chunk in self._iter_chunks_read(file_info):
+                        await self._upload_chunk(file_info, chunk)
 
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async for chunk in self._iter_chunks_read(file):
-                        try:
-                            await self._upload_chunk(file, chunk)
-                            
-                        except ChunkUploadError as e:
-                            raise FileUploadError(file) from e
-                        
-                except Exception as e:
-                    if attempt < self._chunk_retries - 1:
-                        msg = f"{file.path} upload failed [{attempt+1}/{self._upload_retries}]"
-                        logger.error(msg)
-                        await asyncio.sleep(self._retry_delay)
-                        continue
+            except Exception as e:
+                if attempt < self._upload_retries - 1:
+                    msg = f"{file_info.path} upload failed [{attempt+1}/{self._upload_retries}]"
+                    logger.error(msg)
+                    await asyncio.sleep(self._upload_delay)
+                    continue
 
-                    raise FileUploadError(file) from e
-        print(f"Successfully uploaded {file.name}")
+                raise FileUploadError(file_info) from e
+
+        print(f"Successfully uploaded {file_info.original_name}")
         return True
-        
+
 
 
     # TODO: This should probably move out of API
@@ -274,10 +226,8 @@ class BunkrrUploader:
             "files": [file.dump()]
         }
 
-        node_response = await self.get_node()
+        node_response = await self.api.get_node()
         if not node_response.success:
-            with tqdm.external_write_mode():
-                logger.error(f"Failed to get server to upload to: {pformat(node_response)}")
             return UploadResponse(**metadata)
 
         server = "/".join(node_response.url.split("/")[:3])

@@ -14,10 +14,6 @@ from .logging_manager import USE_MAIN_NAME, setup_logger
 
 logger = logging.getLogger(__name__)
 
-
-
-
-
 async def async_main() -> None:
     args = cli()
     setup_logger(

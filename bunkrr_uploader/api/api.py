@@ -2,6 +2,7 @@ import asyncio
 
 from aiohttp import ClientSession, FormData
 from yarl import URL
+import logging
 
 from bunkrr_uploader.api.types.responses import (
     AlbumsResponse,
@@ -15,6 +16,8 @@ from bunkrr_uploader.api.types.responses import (
 from bunkrr_uploader.api.types.files import FileInfo
 from pathlib import Path
 import aiofiles
+
+logger = logging.getLogger(__name__)
 
 class BunkrrAPI:
     RATE_LIMIT = 50
@@ -43,7 +46,8 @@ class BunkrrAPI:
     async def _get_json(self, path: str) -> dict:
         async with self._semaphore, self._session.get(path) as resp:
             resp.raise_for_status()
-            response = await resp.json()
+            response: dict = await resp.json()
+            logger.debug(response)
             return response
 
     async def _post(self, path: str, *, data: FormData | dict | None = None) -> dict:
@@ -53,11 +57,13 @@ class BunkrrAPI:
         async with self._semaphore, self._session.post(path, data=data) as resp:
             resp.raise_for_status()
             response = await resp.json()
+            logger.debug(response)
             return response
 
     async def startup(self):
         self._info = await self.check()
         self._chunk_size = self._chunk_size or self.info.chunkSize.default
+        assert 0 < self._chunk_size <= self.info.chunkSize.max
         await self.verify_token()
 
     """----------------------------------------------------------------------------------------------"""
@@ -95,10 +101,12 @@ class BunkrrAPI:
         response = await self._post("/albums", data=data)
         return CreateAlbumResponse(**response)
 
-    async def upload(self, file: Path, album_id: str | None = None) -> UploadResponse:
-        file_info = FileInfo(file, album_id=album_id)
+    async def upload(self, file: FileInfo | Path, album_id: str | None = None) -> UploadResponse:
+        if isinstance(file,Path):
+            file = FileInfo(file, album_id=album_id)
+        file_info = file
         assert file_info.size <= self.info.maxSize
-        async with aiofiles.open(file, "rb") as file_data:
+        async with aiofiles.open(file_info.path, "rb") as file_data:
             chunk_data = await file_data.read(self._chunk_size)
         data = FormData()
         data.add_field(

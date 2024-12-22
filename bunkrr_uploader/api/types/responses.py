@@ -23,7 +23,7 @@ class FileIdentifierLength(BaseModel):
 
 
 class StripTags(BaseModel):
-    blacklistExtensions: list[str]
+    blacklistExtensions: set[str]
     default: bool
     force: bool
     video: bool

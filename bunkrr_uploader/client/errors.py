@@ -1,5 +1,5 @@
 
-from bunkrr_uploader.api.types.files import FileInfo, ChunkInfo
+from bunkrr_uploader.api.types.files import ChunkInfo, FileInfo
 
 
 class ChunkUploadError(Exception):
