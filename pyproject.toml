@@ -2,7 +2,7 @@
 name = "bunkrr-uploader"
 version = "0.1.0"
 description = "Async Bunkrr uploader"
-authors = ["NTFSvolume"]
+authors = ["NTFSvolume", "alexmi256"]
 license = "MIT"
 readme = "README.md"
 
@@ -16,6 +16,8 @@ aiofiles = "^24.1.0"
 aiohttp = "^3.11.10"
 tqdm = "^4.67.1 "
 rich = "^13.9.4"
+yarl = "^1.18.3"
+pydantic = "^2.10.4"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.1"

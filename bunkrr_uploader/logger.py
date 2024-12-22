@@ -1,11 +1,13 @@
 import logging
 from datetime import datetime
+from enum import IntEnum
 from pathlib import Path
 
-import __main__
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
+
+import __main__
 
 CONSOLE_THEME = Theme(
     {
@@ -13,27 +15,27 @@ CONSOLE_THEME = Theme(
         "logging.level.debug": "blue",
         "logging.level.info": "white",
         "logging.level.error": "red",
-    }
+    },
 )
 
 RICH_CONSOLE = Console(theme=CONSOLE_THEME)
+RICH_HANDLER_CONFIG: dict = {"show_time": False, "rich_tracebacks": True, "tracebacks_show_locals": False}
 
-RICH_HANDLER_CONFIG = {"show_time": False, "rich_tracebacks": True, "tracebacks_show_locals": False}
 
-NO_LOG_FILE = 0
-USE_PROJECT_NAME = 1
-USE_MAIN_NAME = 2
+class LogConfig(IntEnum):
+    NO_LOG_FILE = 0
+    USE_PROJECT_NAME = 1
+    USE_MAIN_NAME = 2
 
 
 def setup_logger(
     *,
-    log_file: int | Path | str = NO_LOG_FILE,
+    log_file: LogConfig | Path | str = LogConfig.NO_LOG_FILE,
     log_level: int = logging.DEBUG,
-    logs_folder_overrride: Path | str = None,
+    logs_folder_overrride: Path | str | None = None,
     datetime_as_suffix: bool = True,
     use_rich_console: bool = True,
 ) -> None:
-
     urllib3_logger = logging.getLogger("urllib3")
     urllib3_logger.setLevel(logging.CRITICAL)
 
@@ -51,15 +53,14 @@ def setup_logger(
     log_folder = Path(logs_folder_overrride) if logs_folder_overrride else default_log_folder
 
     if log_file:
-
-        if log_file == USE_PROJECT_NAME:
+        if log_file == LogConfig.USE_PROJECT_NAME:
             log_file_path = log_folder / main.parent.with_suffix(".log").name
 
-        elif log_file == USE_MAIN_NAME:
+        elif log_file == LogConfig.USE_MAIN_NAME:
             log_file_path = log_folder / main.with_suffix(".log").name
 
         else:
-            log_file_path = Path(log_file)
+            log_file_path = Path(log_file)  # type: ignore
 
     if log_file_path:
         if datetime_as_suffix:
@@ -67,7 +68,9 @@ def setup_logger(
 
         log_file_path.parent.mkdir(exist_ok=True)
         file_handler = RichHandler(
-            **RICH_HANDLER_CONFIG, level=logging.DEBUG, console=Console(file=log_file_path.open("a", encoding="utf8"))
+            **RICH_HANDLER_CONFIG,
+            level=logging.DEBUG,
+            console=Console(file=log_file_path.open("a", encoding="utf8")),
         )
         logger.addHandler(file_handler)
 

@@ -16,7 +16,10 @@ def cli():
                 You can also set the BUNKRR_TOKEN environment variable for this""",
     )
     parser.add_argument(
-        "-f", "--folder", type=str, help="Folder to upload files to overriding the directory name if used"
+        "-f",
+        "--folder",
+        type=str,
+        help="Folder to upload files to overriding the directory name if used",
     )
     parser.add_argument("-d", "--dry-run", action="store_true", help="Don't create albums or upload files")
     parser.add_argument(

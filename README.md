@@ -9,6 +9,7 @@ WIP
 - Progress bars
 
 # TODO
+- [ ] Use nicegui
 - [ ] Slit into API and client
 - [ ] Migrate to Nicequests
 - [ ] Upload logging
@@ -20,3 +21,5 @@ WIP
 - [ ] Add tests
 - [ ] Add github runners for tests
 - [ ] Recursive directory upload support
+
+Original code by [alexmi256](https://github.com/alexmi256/bunkrr-uploader)
