@@ -1,56 +1,97 @@
+# ruff: noqa: N815
+from datetime import datetime, timedelta
+from typing import Annotated
 
-from dataclasses import dataclass
-from .custom_types import BunkrrFile, ChunkSize, Permissions, FileIdentifierLength, StripTags
+from pydantic import AfterValidator, BaseModel, ByteSize, HttpUrl
+from yarl import URL
 
-@dataclass
-class BunkrrResponse:
-    success: bool
+from bunkrr_uploader.api.types.files import FileInfo
 
-@dataclass
+HttpURL = Annotated[HttpUrl, AfterValidator(lambda x: URL(str(x)))]
+
+
+class ChunkSize(BaseModel):
+    max: ByteSize
+    default: ByteSize
+    timeout: timedelta
+
+
+class FileIdentifierLength(BaseModel):
+    min: int
+    max: int
+    default: int
+    force: bool
+
+
+
+class StripTags(BaseModel):
+    blacklistExtensions: list[str]
+    default: bool
+    force: bool
+    video: bool
+
+
+class Permissions:
+    admin: bool
+    moderator: bool
+    superadmin: bool
+    user: bool
+    vip: bool
+    vvip: bool
+
+
+class BunkrrResponse(BaseModel):
+    description: str = ""
+    success: bool = True
+
+
 class UploadResponse(BunkrrResponse):
-    files: list[BunkrrFile]
+    files: list[FileInfo]
 
 
-@dataclass
 class AlbumItemResponse(BunkrrResponse):
+    descriptionHtml: str
+    download: bool
+    editedAt: datetime
+    enabled: bool
     id: int
-    name: str
     identifier: str
+    name: str
+    public: bool
+    size: ByteSize
+    timestamp: datetime
+    uploads: int
+    zipGeneratedAt: datetime
+    zipSize: ByteSize | None
 
 
-@dataclass
+
 class AlbumsResponse(BunkrrResponse):
     albums: list[AlbumItemResponse]
     count: int
 
 
-@dataclass
 class CreateAlbumResponse(BunkrrResponse):
     id: int
 
-
-@dataclass
 class VerifyTokenResponse(BunkrrResponse):
-    username: str
-    permissions: Permissions
+    defaultRetentionPeriod: timedelta
     group: str
-    retention_periods: list[int]
-    default_retention_period: int
+    permissions: Permissions
+    retentionPeriods: list[timedelta]
+    username: str
 
 
-
-@dataclass
 class CheckResponse(BunkrrResponse):
+    chunkSize: ChunkSize
+    defaultTemporaryUploadAge: int
+    enableUserAccounts: bool
+    fileIdentifierLength: FileIdentifierLength
+    maintenance: bool
+    maxSize: ByteSize
     private: bool
-    enable_user_accounts: bool
-    max_size: str
-    chunk_size: ChunkSize
-    file_identifier_length: FileIdentifierLength
-    strip_tags: StripTags
-    temporary_upload_ages: list[int]
-    default_temporary_upload_age: int
+    stripTags: StripTags
+    temporaryUploadAges: list[int]
 
-
-@dataclass
 class NodeResponse(BunkrrResponse):
-    url: str
+    url: HttpURL
