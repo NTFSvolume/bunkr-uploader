@@ -9,12 +9,16 @@ from bunkrr_uploader.api.types.responses import (
     CreateAlbumResponse,
     NodeResponse,
     VerifyTokenResponse,
+    UploadResponse,
 )
 
+from bunkrr_uploader.api.types.files import FileInfo
+from pathlib import Path
+import aiofiles
 
 class BunkrrAPI:
     RATE_LIMIT = 50
-    def __init__(self, token: str):
+    def __init__(self, token: str, chunk_size: int | None = None):
         self._token = token
         self._api_entrypoint = URL("https://dash.bunkrr.cr/api")
         self._session_headers = {
@@ -23,13 +27,14 @@ class BunkrrAPI:
             "token": self._token,
         }
         self._session = ClientSession(self._api_entrypoint, headers=self._session_headers)
+        self._chunk_size: int = chunk_size # type: ignore
         self._info = None
         self._semaphore = asyncio.Semaphore(self.RATE_LIMIT)
         self._server_sessions = {}
 
     @property
-    def info(self):
-        return self._info
+    def info(self) -> CheckResponse:
+        return self._info # type: ignore
 
     @property
     def server_sessions(self):
@@ -52,6 +57,7 @@ class BunkrrAPI:
 
     async def startup(self):
         self._info = await self.check()
+        self._chunk_size = self._chunk_size or self.info.chunkSize.default
         await self.verify_token()
 
     """----------------------------------------------------------------------------------------------"""
@@ -88,3 +94,18 @@ class BunkrrAPI:
         data = {"name": name, "description": description, "public": public, "download": download}
         response = await self._post("/albums", data=data)
         return CreateAlbumResponse(**response)
+
+    async def upload(self, file: Path, album_id: str | None = None) -> UploadResponse:
+        file_info = FileInfo(file, album_id=album_id)
+        assert file_info.size <= self.info.maxSize
+        async with aiofiles.open(file, "rb") as file_data:
+            chunk_data = await file_data.read(self._chunk_size)
+        data = FormData()
+        data.add_field(
+            "files[]", chunk_data, filename=file_info.path.name, content_type=file_info.mimetype
+        )
+        if album_id:
+            data.add_field("albumid", file_info.album_id)
+
+        response = await self._post("/upload", data=data)
+        return UploadResponse(**response)

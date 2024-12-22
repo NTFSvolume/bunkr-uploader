@@ -232,20 +232,6 @@ class BunkrrUploader:
                 yield ChunkInfo(chunk_data,index, total_chunks)
                 index +=1
 
-    async def _simple_upload(self, file: FileInfo, session: Any):
-        chunk_data = file.data.read(self._chunk_size)
-        data = FormData()
-        data.add_field(
-            "files[]", chunk_data, filename=file.name, content_type=file.mimetype
-        )
-
-        async with session.post("/api/upload", data=data) as resp:
-            response = await resp.json()
-            if not response.get("success"):
-                raise Exception(f"{file.name} failed uploading without chunks")
-
-            return response
-
     async def upload_file(
         self, file_path: Path, album_id: str | None = None
 

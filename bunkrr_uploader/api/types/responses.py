@@ -5,8 +5,6 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, ByteSize, HttpUrl
 from yarl import URL
 
-from bunkrr_uploader.api.types.files import FileInfo
-
 HttpURL = Annotated[HttpUrl, AfterValidator(lambda x: URL(str(x)))]
 
 
@@ -44,9 +42,12 @@ class BunkrrResponse(BaseModel):
     description: str = ""
     success: bool = True
 
+class UploadItemResponse(BunkrrResponse):
+    name: str
+    url: HttpURL
 
 class UploadResponse(BunkrrResponse):
-    files: list[FileInfo]
+    files: list[UploadItemResponse]
 
 
 class AlbumItemResponse(BunkrrResponse):
@@ -95,3 +96,4 @@ class CheckResponse(BunkrrResponse):
 
 class NodeResponse(BunkrrResponse):
     url: HttpURL
+
