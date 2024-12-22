@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from bunkrr_uploader.args import ParsedArgs
+from bunkrr_uploader.args import parse_args
 from bunkrr_uploader.client import BunkrrUploader
 from bunkrr_uploader.logger import LogConfig, setup_logger
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 async def async_main() -> None:
-    args = ParsedArgs.parse_args()
+    args = parse_args()
     setup_logger(log_file=LogConfig.USE_MAIN_NAME)
     logger.debug(args.model_dump_json())
 
