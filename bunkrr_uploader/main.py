@@ -20,7 +20,7 @@ async def async_main() -> None:
         await bunkrr_client.close()
 
 
-if __name__ == "__main__":
+def main():
     try:
         asyncio.run(async_main())
         exit(0)
@@ -31,3 +31,7 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Fatal error. Exiting...")
         exit(1)
+
+
+if __name__ == "__main__":
+    main()
