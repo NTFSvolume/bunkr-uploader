@@ -39,7 +39,7 @@ class Permissions(BaseModel):
 
 class BunkrrResponse(BaseModel):
     description: str = ""
-    success: bool = True
+    success: bool = False
 
 
 class UploadItemResponse(BunkrrResponse):
@@ -48,7 +48,7 @@ class UploadItemResponse(BunkrrResponse):
 
 
 class UploadResponse(BunkrrResponse):
-    files: list[UploadItemResponse]
+    files: list[UploadItemResponse] = []
 
 
 class AlbumItemResponse(BunkrrResponse):

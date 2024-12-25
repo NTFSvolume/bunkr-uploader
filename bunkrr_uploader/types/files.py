@@ -7,6 +7,8 @@ from hashlib import md5
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from .responses import UploadItemResponse
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -49,8 +51,12 @@ class FileInfo:
         return {
             "uuid": self.uuid,
             "original": self.original_name,
-            "type": self.mimetype,
-            "albumid": self.album_id or "",
-            "filelength": "",
-            "age": "",
+            "type": "",
+            "albumid": self.album_id or None,
+            "filelength": None,
+            "age": None,
         }
+
+    @property
+    def as_item(self):
+        return UploadItemResponse(name=self.uuid, url=None)

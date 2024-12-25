@@ -49,18 +49,20 @@ class BunkrrAPI:
         async with self._semaphore, self._session.get(path) as resp:
             resp.raise_for_status()
             response: dict = await resp.json()
-            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
+            record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
+            logger.debug(f"response: \n {json.dumps(record, indent=4)}")
             return response
 
     async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
         data = data or {}
-        if isinstance(data, dict):
+        if isinstance(data, dict) and "finishchunks" not in path:
             data["token"] = data.get("token") or self._token
         session = self.server_sessions.get(server) or self._session  # type: ignore
         async with self._semaphore, session.post(path, data=data) as resp:
             resp.raise_for_status()
             response = await resp.json()
-            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
+            record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
+            logger.debug(f"response: \n {json.dumps(record, indent=4)}")
             return response
 
     async def startup(self):
@@ -126,7 +128,7 @@ class BunkrrAPI:
         response = await self._post("upload", data=data, server=server)
         return UploadResponse(**response)
 
-    async def finish_chunks(self, file_info: FileInfo):
+    async def finish_chunks(self, file_info: FileInfo, server: URL):
         data = {"files": [file_info.dump_json()]}
-        response = await self._post("upload/finishchunks", data=data)
+        response = await self._post("upload/finishchunks", data=data, server=server)
         return UploadResponse(**response)

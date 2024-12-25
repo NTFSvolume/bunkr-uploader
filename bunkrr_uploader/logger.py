@@ -31,7 +31,7 @@ def setup_logger(
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     if use_rich_console:
-        console_handler = RichHandler(**RICH_HANDLER_CONSOLE_CONFIG, level=log_level, console=RICH_CONSOLE)
+        console_handler = RichHandler(**RICH_HANDLER_CONSOLE_CONFIG, level=20, console=RICH_CONSOLE)
         logger.addHandler(console_handler)
 
     project_folder = Path(__file__).parent
@@ -45,7 +45,7 @@ def setup_logger(
     file_handler = RichHandler(
         **RICH_HANDLER_FILE_CONFIG,
         level=logging.DEBUG,
-        console=Console(file=log_file_path.open("a", encoding="utf8")),
+        console=Console(file=log_file_path.open("a", encoding="utf8"), width=280),
     )
     logger.addHandler(file_handler)
 

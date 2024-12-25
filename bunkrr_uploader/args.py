@@ -42,7 +42,12 @@ def handle_validation_error(e: ValidationError, *, title: str | None = None, sou
 
 class ParsedArgs(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="bunkr_", env_ignore_empty=True, cli_parse_args=True, cli_kebab_case=True, populate_by_name=True
+        env_file=".env",
+        env_prefix="bunkr_",
+        env_ignore_empty=True,
+        cli_parse_args=True,
+        cli_kebab_case=True,
+        populate_by_name=True,
     )
     path: CliPositionalArg[Path] = Field(description="File or directory to look for files in to upload")
     token: str = Field(

@@ -43,6 +43,7 @@ class BunkrrUploader:
         await self._api.startup()
         if self._use_max_chunk_size:
             self._api._chunk_size = self._api.info.chunkSize.max
+        self._api._chunk_size = 10 * 1024 * 1024
         self._chunk_size = self._api._chunk_size
         self._ready = True
 
@@ -66,14 +67,14 @@ class BunkrrUploader:
         for attempt in range(self._chunk_retries):
             data = self._create_chunk_dataform(file_info, chunk)
             try:
-                response = await self._api._post("/upload", data=data, server=server)
+                response = await self._api._post("upload", data=data, server=server)
                 response = UploadResponse(**response)
                 return response.success
 
             except Exception as e:
-                if attempt < self._chunk_retries - 1:
-                    msg = f"{file_info.uuid} failed uploading chunk #{chunk.index}/{chunk.total} to {server} [{attempt+1}/{self._chunk_retries}]"
-                    logger.error(msg)
+                if attempt < self._chunk_retries:
+                    msg = f"{file_info.uuid} failed uploading chunk #{chunk.index+1}/{chunk.total} to {server} [{attempt+1}/{self._chunk_retries}]"
+                    logger.error(msg, exc_info=True)
                     await asyncio.sleep(self._upload_delay)
                     continue
                 raise FileUploadError(file_info) from e
@@ -97,18 +98,23 @@ class BunkrrUploader:
         )
         return form
 
-    async def _iter_chunks_read(self, file: FileInfo) -> AsyncIterator[ChunkInfo]:
+    async def _iter_chunks_read(self, file_info: FileInfo) -> AsyncIterator[ChunkInfo]:
         """Iterate over file chunks."""
-        total_chunks = (file.size + self._chunk_size - 1) // self._chunk_size
-        async with aiofiles.open(file.path, mode="rb") as file_data:
+        total_chunks = (file_info.size + self._chunk_size - 1) // self._chunk_size
+        from tqdm.asyncio import tqdm
+
+        async with aiofiles.open(file_info.path, mode="rb") as file_data:
             index = 0
+            progress_bar = tqdm(total=file_info.size, unit="B", unit_scale=True, desc="Uploading")
             while True:
                 chunk_data = await file_data.read(self._chunk_size)
                 chunk_offset = self._chunk_size * index
                 if not chunk_data:
                     break
                 yield ChunkInfo(chunk_data, index, total_chunks, chunk_offset)
+                progress_bar.update(len(chunk_data))
                 index += 1
+            progress_bar.close()
 
     async def _upload_file(self, file_info: FileInfo, server: URL) -> UploadResponse:
         """Upload a file in chunks with retry mechanism."""
@@ -122,7 +128,7 @@ class BunkrrUploader:
                         await self._upload_chunk(file_info, chunk, server)
                     finish_chunks = True
                 if finish_chunks:
-                    return await self._api.finish_chunks(file_info)
+                    return await self._api.finish_chunks(file_info, server)
 
             except Exception as e:
                 if attempt < self._upload_retries - 1:
@@ -140,7 +146,10 @@ class BunkrrUploader:
         node_response = await self._api.get_node()
         if not node_response.success:
             return None
-        server: URL = URL(f"{node_response.url}/")  # type: ignore
+        server: URL = node_response.url  # type: ignore
+        if "upload" in server.path:
+            server = server.with_path("/api/")
+        logger.info(f"{server = }")
         if server not in self._api.server_sessions:
             headers = {"albumid": album_id} if album_id else {}
             headers = self._api._session_headers | headers
@@ -182,13 +191,18 @@ class BunkrrUploader:
             logger.debug(f"album id: '{album_id}'")
 
         async def worker(file_info: FileInfo, server: URL) -> UploadResponse:
+            default_response = {"success": False, "files": [file_info.as_item]}
             async with self._max_connections:
-                return await self._upload_file(file_info, server=server)
+                try:
+                    return await self._upload_file(file_info, server=server)
+                except FileUploadError as e:
+                    logger.error(str(e), exc_info=True)
+                return UploadResponse(**default_response)
 
         responses = []
         tasks = []
         for file_info in files_to_upload:
-            default_response = {"success": False, "files": [file_info.dump_json()]}
+            default_response = {"success": False, "files": [file_info.as_item]}
             server = await self._get_server(album_id)
             if not server:
                 responses.append(UploadResponse(**default_response))
