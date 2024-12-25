@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime
+
+# from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -34,11 +35,12 @@ def setup_logger(
         logger.addHandler(console_handler)
 
     project_folder = Path(__file__).parent
-    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_folder = project_folder / "logs"
 
     log_file_path = log_folder / project_folder.with_suffix(".log").name
-    log_file_path = log_file_path.parent / f"{log_file_path.stem}_{current_time}.log"
+    log_file_path.unlink(missing_ok=True)
+    # log_file_path = log_file_path.parent / f"{log_file_path.stem}_{current_time}.log"
     log_file_path.parent.mkdir(exist_ok=True)
     file_handler = RichHandler(
         **RICH_HANDLER_FILE_CONFIG,
