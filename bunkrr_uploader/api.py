@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -24,7 +25,7 @@ class BunkrrAPI:
 
     def __init__(self, token: str, chunk_size: int | None = None):
         self._token = token
-        self._api_entrypoint = URL("https://dash.bunkrr.cr/api")
+        self._api_entrypoint = URL("https://dash.bunkr.cr/api/")
         self._session_headers = {
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
@@ -48,7 +49,7 @@ class BunkrrAPI:
         async with self._semaphore, self._session.get(path) as resp:
             resp.raise_for_status()
             response: dict = await resp.json()
-            logger.debug(response)
+            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
             return response
 
     async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
@@ -59,7 +60,7 @@ class BunkrrAPI:
         async with self._semaphore, session.post(path, data=data) as resp:
             resp.raise_for_status()
             response = await resp.json()
-            logger.debug(response)
+            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
             return response
 
     async def startup(self):
@@ -83,19 +84,19 @@ class BunkrrAPI:
     async def check(self) -> CheckResponse:
         if self._info:
             return self._info
-        response = await self._get_json("/check")
+        response = await self._get_json("check")
         return CheckResponse(**response)
 
     async def get_node(self) -> NodeResponse:
-        response = await self._get_json("/node")
+        response = await self._get_json("node")
         return NodeResponse(**response)
 
     async def verify_token(self, *, token: str | None = None) -> VerifyTokenResponse:
-        response = await self._post("/tokens/verify", data={"token": token})
+        response = await self._post("tokens/verify", data={"token": token})
         return VerifyTokenResponse(**response)
 
     async def get_albums(self) -> AlbumsResponse:
-        response = await self._get_json("/albums")
+        response = await self._get_json("albums")
         return AlbumsResponse(**response)
 
     async def create_album(
@@ -107,7 +108,7 @@ class BunkrrAPI:
         download: bool = True,
     ) -> CreateAlbumResponse:
         data = {"name": name, "description": description, "public": public, "download": download}
-        response = await self._post("/albums", data=data)
+        response = await self._post("albums", data=data)
         return CreateAlbumResponse(**response)
 
     async def upload(self, file: FileInfo | Path, server: URL, album_id: str | None = None) -> UploadResponse:
@@ -122,10 +123,10 @@ class BunkrrAPI:
         if album_id:
             data.add_field("albumid", file_info.album_id)
 
-        response = await self._post("/upload", data=data, server=server)
+        response = await self._post("upload", data=data, server=server)
         return UploadResponse(**response)
 
     async def finish_chunks(self, file_info: FileInfo):
         data = {"files": [file_info.dump_json()]}
-        response = await self._post("/upload/finishchunks", data=data)
+        response = await self._post("upload/finishchunks", data=data)
         return UploadResponse(**response)

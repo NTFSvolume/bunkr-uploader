@@ -18,6 +18,7 @@ tqdm = "^4.67.1 "
 rich = "^13.9.4"
 yarl = "^1.18.3"
 pydantic = "^2.10.4"
+pydantic-settings = "^2.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.1"

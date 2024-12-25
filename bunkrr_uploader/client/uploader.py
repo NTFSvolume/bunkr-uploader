@@ -140,7 +140,7 @@ class BunkrrUploader:
         node_response = await self._api.get_node()
         if not node_response.success:
             return None
-        server: URL = node_response.url  # type: ignore
+        server: URL = URL(f"{node_response.url}/")  # type: ignore
         if server not in self._api.server_sessions:
             headers = {"albumid": album_id} if album_id else {}
             headers = self._api._session_headers | headers

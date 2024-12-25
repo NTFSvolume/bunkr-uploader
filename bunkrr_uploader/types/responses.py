@@ -28,7 +28,7 @@ class StripTags(BaseModel):
     video: bool
 
 
-class Permissions:
+class Permissions(BaseModel):
     admin: bool
     moderator: bool
     superadmin: bool
