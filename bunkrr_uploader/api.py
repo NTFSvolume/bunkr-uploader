@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -48,7 +49,7 @@ class BunkrrAPI:
         async with self._semaphore, self._session.get(path) as resp:
             resp.raise_for_status()
             response: dict = await resp.json()
-            logger.debug(response)
+            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
             return response
 
     async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
@@ -59,7 +60,7 @@ class BunkrrAPI:
         async with self._semaphore, session.post(path, data=data) as resp:
             resp.raise_for_status()
             response = await resp.json()
-            logger.debug(response)
+            logger.debug(f"response: \n {json.dumps(response, indent=4)}")
             return response
 
     async def startup(self):
