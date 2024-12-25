@@ -50,13 +50,13 @@ class ParsedArgs(BaseSettings):
         description="API token for your account so that you can upload to a specific account/folder. You can also set the BUNKR_TOKEN environment variable for this",
     )
     album_name: str = Field("", validation_alias=AliasChoices("n", "album-name"))
-    chunk_size: ByteSize = ByteSize(0)
-    use_max_chunk_size: bool = Field(True, description="Use the server's maximum chunk size instead of the default one")
     concurrent_uploads: int = Field(
         2,
         validation_alias=AliasChoices("c", "concurrent-uploads"),
         description="Maximum parallel uploads to do at once",
     )
+    chunk_size: ByteSize = ByteSize(0)
+    use_max_chunk_size: bool = Field(True, description="Use the server's maximum chunk size instead of the default one")
     public: bool = Field(True, description="Make all files uploaded public")
     config_file: Path | None = None
     upload_retries: int = Field(1, description="How many times to retry a failed upload")
