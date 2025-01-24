@@ -1,6 +1,6 @@
 # Bunkrr Uploader
 
-WIP
+WORK IN PROGRESS
 
 ## Supports
 - Bunkrr accounts
@@ -10,9 +10,10 @@ WIP
 
 # TODO
 - [ ] Use nicegui
-- [ ] Slit into API and client
-- [ ] Migrate to Nicequests
+- [X] Slit API and UploadClient
+- [ ] Migrate to `~~Niquests~~ aiohttp
 - [ ] Upload logging
+- [ ] Replace tqdm with rich progress
 - [ ] Skipping duplicate uploads
 - [ ] Private and public directory uploads
 - [ ] Update README
@@ -20,6 +21,6 @@ WIP
 - [ ] Add file zipping and cleanup
 - [ ] Add tests
 - [ ] Add github runners for tests
-- [ ] Recursive directory upload support
+- [X] Recursive directory upload support
 
 Original code by [alexmi256](https://github.com/alexmi256/bunkrr-uploader)
