@@ -7,15 +7,13 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
 
-CONSOLE_THEME = Theme(
-    {
-        "logging.level.warning": "yellow",
-        "logging.level.debug": "blue",
-        "logging.level.info": "white",
-        "logging.level.error": "red",
-    },
-)
-
+THEME_DICT = {
+    "logging.level.warning": "yellow",
+    "logging.level.debug": "blue",
+    "logging.level.info": "white",
+    "logging.level.error": "red",
+}
+CONSOLE_THEME = Theme(THEME_DICT)
 RICH_CONSOLE = Console(theme=CONSOLE_THEME)
 RICH_HANDLER_CONSOLE_CONFIG: dict = {"show_time": False, "rich_tracebacks": False, "tracebacks_show_locals": False}
 RICH_HANDLER_FILE_CONFIG: dict = {"show_time": True, "rich_tracebacks": True, "tracebacks_show_locals": True}
