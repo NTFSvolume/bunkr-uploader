@@ -51,7 +51,7 @@ class FileInfo:
         return {
             "uuid": self.uuid,
             "original": self.original_name,
-            "type": "",
+            "type": self.mimetype,
             "albumid": self.album_id or None,
             "filelength": None,
             "age": None,

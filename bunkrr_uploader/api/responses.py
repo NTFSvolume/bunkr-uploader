@@ -1,8 +1,8 @@
 # ruff: noqa: N815
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, TypedDict
 
-from pydantic import AfterValidator, BaseModel, ByteSize, HttpUrl
+from pydantic import AfterValidator, BaseModel, ByteSize, ConfigDict, HttpUrl
 from yarl import URL
 
 HttpURL = Annotated[HttpUrl, AfterValidator(lambda x: URL(str(x)))]
@@ -14,21 +14,21 @@ class ChunkSize(BaseModel):
     timeout: timedelta
 
 
-class FileIdentifierLength(BaseModel):
+class FileIdentifierLength(TypedDict):
     min: int
     max: int
     default: int
     force: bool
 
 
-class StripTags(BaseModel):
+class StripTags(TypedDict):
     blacklistExtensions: set[str]
     default: bool
     force: bool
     video: bool
 
 
-class Permissions(BaseModel):
+class Permissions(TypedDict):
     admin: bool
     moderator: bool
     superadmin: bool
@@ -38,13 +38,18 @@ class Permissions(BaseModel):
 
 
 class BunkrrResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     description: str = ""
-    success: bool = False
+    success: bool = True
 
 
 class UploadItemResponse(BunkrrResponse):
     name: str
     url: HttpURL | None
+
+    def model_post_init(self, *_):
+        if self.url is None:
+            self.success = False
 
 
 class UploadResponse(BunkrrResponse):

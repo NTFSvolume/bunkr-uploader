@@ -19,6 +19,18 @@ from bunkrr_uploader.api.responses import (
 
 logger = logging.getLogger("bunkr-uploader")
 
+DEFAULT_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
+    "Referer": "https://dash.bunkr.cr/",
+    "striptags": "null",
+    "Origin": "https://dash.bunkr.cr",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "cross-site",
+    "Pragma": "no-cache",
+}
+
 
 class BunkrrAPI:
     RATE_LIMIT = 50
@@ -26,13 +38,9 @@ class BunkrrAPI:
     def __init__(self, token: str, chunk_size: int | None = None):
         self._token = token
         self._api_entrypoint = URL("https://dash.bunkr.cr/api/")
-        self._session_headers = {
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-            "token": self._token,
-        }
+        self._session_headers = DEFAULT_HEADERS | {"token": self._token}
         self._session = ClientSession(self._api_entrypoint, headers=self._session_headers)
-        self._chunk_size: int = chunk_size  # type: ignore
+        self._chunk_size: int = chunk_size or 0
         self._info = None
         self._semaphore = asyncio.Semaphore(self.RATE_LIMIT)
         self._server_sessions: dict[URL, ClientSession] = {}
@@ -50,15 +58,22 @@ class BunkrrAPI:
             resp.raise_for_status()
             response: dict = await resp.json()
             record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
-            logger.debug(f"response: \n {json.dumps(record, indent=4)}")
+            logger.debug(f"response: \n {json.dumps(record, indent=4, ensure_ascii=False)}")
             return response
 
     async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
         data = data or {}
         if isinstance(data, dict) and "finishchunks" not in path:
             data["token"] = data.get("token") or self._token
-        session = self.server_sessions.get(server) or self._session  # type: ignore
-        async with self._semaphore, session.post(path, data=data) as resp:
+
+        session = self.server_sessions.get(server) if server else None
+        session = session or self._session
+        headers = session.headers
+        if "finishchunks" in path:
+            headers = dict(session.headers) | {"Content-Type": "application/json;charset=utf-8"}
+            data = json.dumps(data)  # type: ignore
+
+        async with self._semaphore, session.post(path, data=data, headers=headers) as resp:
             resp.raise_for_status()
             response = await resp.json()
             record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
@@ -116,10 +131,12 @@ class BunkrrAPI:
     async def upload(self, file: FileInfo | Path, server: URL, album_id: str | None = None) -> UploadResponse:
         if isinstance(file, Path):
             file = FileInfo(file, album_id=album_id)
+
         file_info = file
         assert file_info.size <= self.info.maxSize
         async with aiofiles.open(file_info.path, "rb") as file_data:
             chunk_data = await file_data.read(self._chunk_size)
+
         data = FormData()
         data.add_field("files[]", chunk_data, filename=file_info.path.name, content_type=file_info.mimetype)
         if album_id:
@@ -130,5 +147,6 @@ class BunkrrAPI:
 
     async def finish_chunks(self, file_info: FileInfo, server: URL):
         data = {"files": [file_info.dump_json()]}
+        logger.info(data)
         response = await self._post("upload/finishchunks", data=data, server=server)
         return UploadResponse(**response)

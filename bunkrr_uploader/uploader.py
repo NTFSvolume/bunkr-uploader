@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
 import aiofiles
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class BunkrUploaderSettings:
+    path: Path
     concurrent_uploads: int = 1
     chunk_size: ByteSize | None = None
     upload_retries: int = 1
@@ -33,19 +34,20 @@ class BunkrUploaderSettings:
     chunk_retries: int = 2
     upload_delay: float = 0.5
 
-    def update(self, **kwargs) -> BunkrUploaderSettings:
-        cls_fields = fields(self)
+    @classmethod
+    def update(cls, **kwargs) -> BunkrUploaderSettings:
+        cls_fields = fields(cls)
         cls_fields_names = [f.name for f in cls_fields]
         valid_kwargs = {k: v for k, v in kwargs.items() if k in cls_fields_names}
         if not valid_kwargs:
             msg = "None of the provided attribute is in the class"
             raise ValueError(msg)
-        values = asdict(self) | valid_kwargs
-        return BunkrUploaderSettings(**values)
+        return BunkrUploaderSettings(**valid_kwargs)
 
 
 class BunkrrUploader:
-    def __init__(self, token: str, settings: BunkrUploaderSettings):
+    def __init__(self, token: str, **kwargs):
+        settings = BunkrUploaderSettings.update(**kwargs)
         self._api = BunkrrAPI(token, settings.chunk_size)
         self.settings = settings
         assert self.settings.concurrent_uploads <= self._api.RATE_LIMIT
@@ -68,7 +70,7 @@ class BunkrrUploader:
         files_to_upload = []
         for file in files:
             file_info = FileInfo(file)
-            if file.suffix.casefold() in self._api.info.stripTags.blacklistExtensions:
+            if file.suffix.casefold() in self._api.info.stripTags["blacklistExtensions"]:
                 logger.error(f"File {file} has blacklisted extension {file.suffix}")
 
             elif file_info.size > self._api.info.maxSize:
@@ -198,6 +200,7 @@ class BunkrrUploader:
 
         if not self._ready:
             await self.startup()
+
         files_to_upload = self._prepare_files(files_to_upload)
         if not files_to_upload:
             logger.error("No files left to upload")
@@ -217,8 +220,8 @@ class BunkrrUploader:
                     logger.error(str(e), exc_info=True)
                 return UploadResponse(**default_response)
 
-        responses = []
-        tasks = []
+        responses: list[UploadResponse] = []
+        tasks: list = []
         for file_info in files_to_upload:
             default_response = {"success": False, "files": [file_info.as_item]}
             server = await self._get_server(album_id)
@@ -228,7 +231,7 @@ class BunkrrUploader:
             tasks.append(asyncio.create_task(worker(file_info, server)))
 
         uploads = await asyncio.gather(*tasks)
-        responses.append(uploads)
+        responses.extend(uploads)
         return responses
 
     async def close(self) -> None:

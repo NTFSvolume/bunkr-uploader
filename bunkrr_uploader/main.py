@@ -14,7 +14,10 @@ async def async_main() -> None:
     logger.debug(f"Using params: \n {args.model_dump_json(indent=4)}")
     bunkrr_client = BunkrrUploader(**args.model_dump())
     try:
-        await bunkrr_client.upload(args.path, album_name=args.album_name)
+        responses = await bunkrr_client.upload(args.path, album_name=args.album_name)
+        for r in responses:
+            logger.info(r.model_dump_json(indent=4))
+
     finally:
         await bunkrr_client.close()
 
