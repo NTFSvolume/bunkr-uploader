@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import aiofiles
-from aiohttp import ClientSession, FormData
+from aiohttp import ClientResponse, ClientSession, FormData
 from yarl import URL
 
 from bunkrr_uploader.api.files import FileInfo
@@ -19,6 +19,8 @@ from bunkrr_uploader.api.responses import (
 
 logger = logging.getLogger("bunkr-uploader")
 
+API_ENTRYPOINT = URL("https://dash.bunkr.cr/api/")
+
 DEFAULT_HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
@@ -32,14 +34,18 @@ DEFAULT_HEADERS = {
 }
 
 
+def _log_resp(resp: ClientResponse, response: dict) -> None:
+    record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
+    logger.debug(f"response: \n {json.dumps(record, indent=4)}")
+
+
 class BunkrrAPI:
     RATE_LIMIT = 50
 
     def __init__(self, token: str, chunk_size: int | None = None):
         self._token = token
-        self._api_entrypoint = URL("https://dash.bunkr.cr/api/")
         self._session_headers = DEFAULT_HEADERS | {"token": self._token}
-        self._session = ClientSession(self._api_entrypoint, headers=self._session_headers)
+        self._session = ClientSession(API_ENTRYPOINT, headers=self._session_headers)
         self._chunk_size: int = chunk_size or 0
         self._info = None
         self._semaphore = asyncio.Semaphore(self.RATE_LIMIT)
@@ -57,12 +63,13 @@ class BunkrrAPI:
         async with self._semaphore, self._session.get(path) as resp:
             resp.raise_for_status()
             response: dict = await resp.json()
-            record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
-            logger.debug(f"response: \n {json.dumps(record, indent=4, ensure_ascii=False)}")
+            _log_resp(resp, response)
             return response
 
-    async def _post(self, path: str, *, data: FormData | dict | None = None, server: URL | None = None) -> dict:
-        data = data or {}
+    async def _post(
+        self, path: str, *, data: FormData | dict | None = None, server: URL | None = None, **kwargs
+    ) -> dict:
+        data = data or kwargs
         if isinstance(data, dict) and "finishchunks" not in path:
             data["token"] = data.get("token") or self._token
 
@@ -76,8 +83,7 @@ class BunkrrAPI:
         async with self._semaphore, session.post(path, data=data, headers=headers) as resp:
             resp.raise_for_status()
             response = await resp.json()
-            record = {"url": str(resp.url), "headers": dict(resp.headers), "response": response}
-            logger.debug(f"response: \n {json.dumps(record, indent=4)}")
+            _log_resp(resp, response)
             return response
 
     async def startup(self):
@@ -109,7 +115,7 @@ class BunkrrAPI:
         return NodeResponse(**response)
 
     async def verify_token(self, *, token: str | None = None) -> VerifyTokenResponse:
-        response = await self._post("tokens/verify", data={"token": token})
+        response = await self._post("tokens/verify", token=token)
         return VerifyTokenResponse(**response)
 
     async def get_albums(self) -> AlbumsResponse:
@@ -124,8 +130,7 @@ class BunkrrAPI:
         public: bool = True,
         download: bool = True,
     ) -> CreateAlbumResponse:
-        data = {"name": name, "description": description, "public": public, "download": download}
-        response = await self._post("albums", data=data)
+        response = await self._post("albums", name=name, description=description, public=public, download=download)
         return CreateAlbumResponse(**response)
 
     async def upload(self, file: FileInfo | Path, server: URL, album_id: str | None = None) -> UploadResponse:

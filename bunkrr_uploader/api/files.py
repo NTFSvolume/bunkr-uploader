@@ -4,13 +4,17 @@ from __future__ import annotations
 import mimetypes
 from dataclasses import dataclass, field
 from hashlib import md5
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from .responses import UploadItemResponse
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _dict(**kwargs: Any) -> dict[str, Any]:
+    return kwargs
 
 
 @dataclass(frozen=True)
@@ -48,14 +52,14 @@ class FileInfo:
         self.uuid = str(uuid4())
 
     def dump_json(self) -> dict:
-        return {
-            "uuid": self.uuid,
-            "original": self.original_name,
-            "type": self.mimetype,
-            "albumid": self.album_id or None,
-            "filelength": None,
-            "age": None,
-        }
+        return _dict(
+            uuid=self.uuid,
+            original=self.original_name,
+            type=self.mimetype,
+            albumid=self.album_id or None,
+            filelength=None,
+            age=None,
+        )
 
     @property
     def as_item(self):
