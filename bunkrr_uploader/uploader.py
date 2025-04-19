@@ -202,7 +202,7 @@ class BunkrrUploader:
 
     """-------------------------------------------------------------------------------------------------"""
 
-    async def upload(self, path: Path, recurse: bool = False, album_name: str | None = None) -> list[UploadResponse]:
+    async def upload(self, path: Path, recurse: bool = False, album_name: str | None = None) -> list[tuple[FileInfo,UploadResponse]]:
         if not path.exists():
             raise FileNotFoundError
         if path.is_file():
@@ -220,29 +220,30 @@ class BunkrrUploader:
         files_to_upload = self._prepare_files(files_to_upload)
         if not files_to_upload:
             logger.error("No files left to upload")
-            return [UploadResponse(success=False, files=[])]
+            return []
 
         album_id = None
         if album_name:
             album_id = await self._get_album_id(album_name)
             logger.debug(f"album id: '{album_id}'")
 
-        async def worker(file_info: FileInfo, server: URL) -> UploadResponse:
+        async def worker(file_info: FileInfo, server: URL) -> tuple[FileInfo,UploadResponse]:
             default_response = {"success": False, "files": [file_info.as_item]}
             async with self._max_connections:
                 try:
-                    return await self._upload_file(file_info, server=server)
+                    response = await self._upload_file(file_info, server=server)
+                    return file_info, response
                 except FileUploadError as e:
                     logger.error(str(e), exc_info=True)
-                return UploadResponse(**default_response)
+                return file_info, UploadResponse(**default_response)
 
-        responses: list[UploadResponse] = []
+        responses: list[tuple[FileInfo,UploadResponse]] = []
         tasks: list = []
         for file_info in files_to_upload:
             default_response = {"success": False, "files": [file_info.as_item]}
             server = await self._get_server(album_id)
             if not server:
-                responses.append(UploadResponse(**default_response))
+                responses.append((file_info, UploadResponse(**default_response)))
                 continue
             tasks.append(asyncio.create_task(worker(file_info, server)))
 
