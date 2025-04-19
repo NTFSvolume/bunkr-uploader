@@ -184,7 +184,7 @@ class BunkrrUploader:
             server = server.with_path("/api/")
         logger.info(f"{server = }")
         if server not in self._api.server_sessions:
-            headers = {"albumid": album_id} if album_id else {}
+            headers = {"albumid": str(album_id)} if album_id else {}
             headers = self._api._session_headers | headers
             session = ClientSession(server, headers=headers)  # type: ignore
             self._api.add_server_session({server: session})
@@ -202,7 +202,9 @@ class BunkrrUploader:
 
     """-------------------------------------------------------------------------------------------------"""
 
-    async def upload(self, path: Path, recurse: bool = False, album_name: str | None = None) -> list[tuple[FileInfo,UploadResponse]]:
+    async def upload(
+        self, path: Path, recurse: bool = False, album_name: str | None = None
+    ) -> list[tuple[FileInfo, UploadResponse]]:
         if not path.exists():
             raise FileNotFoundError
         if path.is_file():
@@ -227,7 +229,7 @@ class BunkrrUploader:
             album_id = await self._get_album_id(album_name)
             logger.debug(f"album id: '{album_id}'")
 
-        async def worker(file_info: FileInfo, server: URL) -> tuple[FileInfo,UploadResponse]:
+        async def worker(file_info: FileInfo, server: URL) -> tuple[FileInfo, UploadResponse]:
             default_response = {"success": False, "files": [file_info.as_item]}
             async with self._max_connections:
                 try:
@@ -237,7 +239,7 @@ class BunkrrUploader:
                     logger.error(str(e), exc_info=True)
                 return file_info, UploadResponse(**default_response)
 
-        responses: list[tuple[FileInfo,UploadResponse]] = []
+        responses: list[tuple[FileInfo, UploadResponse]] = []
         tasks: list = []
         for file_info in files_to_upload:
             default_response = {"success": False, "files": [file_info.as_item]}

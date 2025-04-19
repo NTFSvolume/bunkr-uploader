@@ -145,7 +145,7 @@ class BunkrrAPI:
         data = FormData()
         data.add_field("files[]", chunk_data, filename=file_info.path.name, content_type=file_info.mimetype)
         if album_id:
-            data.add_field("albumid", file_info.album_id)
+            data.add_field("albumid", str(file_info.album_id))
 
         response = await self._post("upload", data=data, server=server)
         return UploadResponse(**response)
