@@ -2,10 +2,10 @@
 from datetime import datetime, timedelta
 from typing import Annotated, TypedDict
 
-from pydantic import AfterValidator, BaseModel, ByteSize, ConfigDict, HttpUrl
-from yarl import URL
+import yarl
+from pydantic import BaseModel, ByteSize, ConfigDict, HttpUrl, PlainValidator
 
-HttpURL = Annotated[HttpUrl, AfterValidator(lambda x: URL(str(x)))]
+URL = Annotated[yarl.URL, PlainValidator(lambda x: yarl.URL(str(HttpUrl(x))))]
 
 
 class ChunkSize(BaseModel):
@@ -38,25 +38,25 @@ class Permissions(TypedDict):
 
 
 class BunkrrResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, defer_build=True)
     description: str = ""
     success: bool = True
 
 
 class UploadItemResponse(BunkrrResponse):
     name: str
-    url: HttpURL | None
+    url: URL | None
 
-    def model_post_init(self, *_):
+    def model_post_init(self, *_) -> None:
         if self.url is None:
             self.success = False
 
 
-class UploadResponse(BunkrrResponse):
+class Upload(BunkrrResponse):
     files: list[UploadItemResponse] = []
 
 
-class AlbumItemResponse(BunkrrResponse):
+class AlbumItem(BunkrrResponse):
     descriptionHtml: str
     download: bool
     editedAt: datetime
@@ -72,16 +72,16 @@ class AlbumItemResponse(BunkrrResponse):
     zipSize: ByteSize | None
 
 
-class AlbumsResponse(BunkrrResponse):
-    albums: list[AlbumItemResponse]
+class Albums(BunkrrResponse):
+    albums: list[AlbumItem]
     count: int
 
 
-class CreateAlbumResponse(BunkrrResponse):
+class CreateAlbum(BunkrrResponse):
     id: int
 
 
-class VerifyTokenResponse(BunkrrResponse):
+class VerifyToken(BunkrrResponse):
     defaultRetentionPeriod: timedelta
     group: str
     permissions: Permissions
@@ -89,7 +89,7 @@ class VerifyTokenResponse(BunkrrResponse):
     username: str
 
 
-class CheckResponse(BunkrrResponse):
+class Check(BunkrrResponse):
     chunkSize: ChunkSize
     defaultTemporaryUploadAge: int
     enableUserAccounts: bool
@@ -101,5 +101,5 @@ class CheckResponse(BunkrrResponse):
     temporaryUploadAges: list[int]
 
 
-class NodeResponse(BunkrrResponse):
-    url: HttpURL
+class Node(BunkrrResponse):
+    url: URL

@@ -1,24 +1,24 @@
 [project]
-name = "bunkrr-uploader"
+name = "bunkr_uploader"
 authors = [
     {name = "NTFSvolume"}
 ]
 dependencies = [
-    "aiofiles>=24.1.0,<25",
-    "aiohttp>=3.11.10,<4",
-    "pydantic-settings>=2.7.0,<3",
-    "pydantic>=2.10.4,<3",
-    "rich>=13.9.4,<14",
-    "yarl>=1.18.3,<2"
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.11.10",
+    "pydantic-settings>=2.7.0",
+    "pydantic>=2.11",
+    "rich>=14",
+    "yarl>=1.20"
 ]
 description = "Async Bunkrr uploader"
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11"
 version = "0.1.0"
 
 [project.scripts]
-bunkrr-uploader = "bunkr_uploader.main:main"
+bunkr_uploader = "bunkr_uploader.main:main"
 
 [tool.ruff]
 line-length = 100
@@ -80,6 +80,6 @@ requires = ["uv_build>=0.8.17,<0.9.0"]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.0.1,<5",
-    "ruff>=0.8.0,<0.9"
+    "pre-commit>=4.3",
+    "ruff>=0.8.0"
 ]

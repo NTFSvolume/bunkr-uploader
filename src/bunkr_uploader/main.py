@@ -1,29 +1,29 @@
 import asyncio
 import logging
+from typing import NoReturn
 
+from bunkr_uploader.client import BunkrrUploader
 from bunkr_uploader.config import parse_args
 from bunkr_uploader.logger import setup_logger
-from bunkr_uploader.uploader import BunkrrUploader
 
 logger = logging.getLogger("bunkr_uploader")
 
 
 async def async_main() -> None:
-    setup_logger()
-    args = parse_args()
-    logger.debug(f"Using params: \n {args.model_dump_json(indent=4)}")
-    bunkrr_client = BunkrrUploader(**args.model_dump())
-    try:
-        responses = await bunkrr_client.upload(args.path, album_name=args.album_name)
+    setup_logger(__name__)
+    settings = parse_args()
+
+    logger.debug(f"Using params: \n {settings.model_dump_json(indent=4)}")
+    async with BunkrrUploader(settings) as client:
+        responses = await client.upload(
+            settings.path, settings.recurse, album_name=settings.album_name
+        )
         for file, resp in responses:
             info = f"success: {resp.success}, url: {resp.files[0].url}"
             logger.info(f"{file.original_name}: {info}")
 
-    finally:
-        await bunkrr_client.close()
 
-
-def main():
+def main() -> NoReturn:
     try:
         asyncio.run(async_main())
         exit(0)
