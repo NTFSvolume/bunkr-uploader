@@ -14,7 +14,7 @@ from bunkr_uploader.api._exceptions import ChunkUploadError, FileUploadError
 from bunkr_uploader.api._files import Chunk, File
 from bunkr_uploader.api._responses import UploadResponse
 
-from .logger import json_logger
+from .logger import write_to_jsonl
 from .progress import new_progress
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime.datetime:
-    return datetime.datetime.now().astimezone(datetime.UTC)
+    return datetime.datetime.now().replace(microsecond=0).astimezone(datetime.UTC)
 
 
 @dataclasses.dataclass(slots=True)
@@ -216,7 +216,7 @@ class BunkrrUploader:
             server = await self._get_server()
             response = await self._upload_file(file, server)
             result = FileUploadResult(file, response)
-            json_logger.info(result)
+            write_to_jsonl(result)
             return result
         except Exception:
             logger.exception(f"Upload of '{file.path}' failed")

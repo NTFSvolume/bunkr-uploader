@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def async_main() -> None:
-    setup_logger(__name__)
+    setup_logger(logger)
     settings = parse_args()
 
     logger.debug(f"Using params: \n {settings.model_dump_json(indent=4)}")
