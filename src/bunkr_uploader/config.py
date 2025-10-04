@@ -60,7 +60,7 @@ class ConfigSettings(BaseSettings):
         validation_alias=AliasChoices("t", "token"),
         description="API token for your account so that you can upload to a specific account/folder. You can also set the BUNKR_TOKEN environment variable for this",
     )
-    album_name: str = Field("", validation_alias=AliasChoices("n", "album-name"))
+    album_name: str | None = Field(None, validation_alias=AliasChoices("n", "album-name"))
     concurrent_uploads: int = Field(
         2,
         validation_alias=AliasChoices("c", "concurrent-uploads"),

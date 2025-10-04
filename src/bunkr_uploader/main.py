@@ -6,7 +6,7 @@ from bunkr_uploader.client import BunkrrUploader
 from bunkr_uploader.config import parse_args
 from bunkr_uploader.logger import setup_logger
 
-logger = logging.getLogger("bunkr_uploader")
+logger = logging.getLogger(__name__)
 
 
 async def async_main() -> None:
@@ -18,6 +18,7 @@ async def async_main() -> None:
         results = await client.upload(
             settings.path, settings.recurse, album_name=settings.album_name
         )
+
         for result in results:
             info = f"success: {result.result.success}, url: {result.result.files[0].url}"
             logger.info(f"{result.file.original_name}: {info}")

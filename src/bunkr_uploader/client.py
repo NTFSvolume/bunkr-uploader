@@ -40,7 +40,7 @@ class FileUploadResult:
     timestamp: datetime.datetime = dataclasses.field(init=False, default_factory=_utc_now)
 
     def dumps(self) -> str:
-        return _file_upload_result_serializer(self, indent=2).decode()
+        return _file_upload_result_serializer(self).decode()
 
 
 _file_upload_result_serializer = TypeAdapter(FileUploadResult).dump_json
@@ -74,7 +74,12 @@ class BunkrrUploader:
     def _prepare_files(self, files: Iterable[Path]) -> Generator[File]:
         max_size = self._api._info.maxSize.human_readable(decimal=True)
         for path in files:
-            file = File.from_path(path)
+            try:
+                file = File.from_path(path)
+            except Exception:
+                logger.exception(f"Unable to prepare file '{path}'")
+                continue
+
             if path.suffix.casefold() in self._api._info.stripTags["blacklistExtensions"]:
                 logger.error(f"File {path} has blacklisted extension {path.suffix}")
 
@@ -103,13 +108,13 @@ class BunkrrUploader:
 
         return False
 
-    async def _chunked_read(self, file_info: File) -> AsyncIterator[Chunk]:
+    async def _chunked_read(self, file: File) -> AsyncIterator[Chunk]:
         """Iterate over file chunks."""
-        total_chunks = (file_info.size + self._chunk_size - 1) // self._chunk_size
+        total_chunks = (file.size + self._chunk_size - 1) // self._chunk_size
         index = 0
-        task_id = self._progress.add_task(file_info.original_name, total=file_info.size)
+        task_id = self._progress.add_task(file.original_name, total=file.size)
         try:
-            async with aiofiles.open(file_info.path, mode="rb") as file_data:
+            async with aiofiles.open(file.path, mode="rb") as file_data:
                 while chunk_data := await file_data.read(self._chunk_size):
                     chunk_offset = self._chunk_size * index
                     mem_view = memoryview(chunk_data)
@@ -193,19 +198,19 @@ class BunkrrUploader:
             album_id = str(await self._get_album_id(album_name))
             logger.debug(f"album id: '{album_id}'")
 
-        tasks: list[asyncio.Task[FileUploadResult]] = []
+        tasks: list[asyncio.Task[FileUploadResult | None]] = []
 
         async with asyncio.TaskGroup() as tg:
             with self._progress:
                 for file in files_to_upload:
                     await self._sem.acquire()
                     tasks.append(
-                        tg.create_task(self._upload(file, album_id)),
+                        tg.create_task(self._try_upload(file, album_id)),
                     )
 
-        return await asyncio.gather(*tasks)
+        return list(filter(None, await asyncio.gather(*tasks)))
 
-    async def _upload(self, file: File, album_id: str | None) -> FileUploadResult:
+    async def _try_upload(self, file: File, album_id: str | None) -> FileUploadResult | None:
         file.album_id = album_id
         try:
             server = await self._get_server()
@@ -213,6 +218,8 @@ class BunkrrUploader:
             result = FileUploadResult(file, response)
             json_logger.info(result)
             return result
+        except Exception:
+            logger.exception(f"Upload of '{file.path}' failed")
         finally:
             self._sem.release()
 
