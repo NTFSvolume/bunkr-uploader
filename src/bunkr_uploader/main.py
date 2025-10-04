@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 async def async_main() -> None:
-    setup_logger(logger)
     settings = parse_args()
+    setup_logger(logger)
 
     logger.debug(f"Using params: \n {settings.model_dump_json(indent=4)}")
     async with BunkrrUploader(settings) as client:

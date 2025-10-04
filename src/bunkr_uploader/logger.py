@@ -28,6 +28,10 @@ json_logger = logging.getLogger("bunkr_output_json")
 jsonl_path: Path
 
 
+def utc_now() -> datetime.datetime:
+    return datetime.datetime.now().replace(microsecond=0).astimezone(datetime.UTC)
+
+
 def setup_logger(logger: logging.Logger) -> None:
     global jsonl_path
     logger.setLevel(logging.DEBUG)
@@ -43,7 +47,7 @@ def setup_logger(logger: logging.Logger) -> None:
     log_folder = Path.cwd() / "bunkr_uploader_logs"
     log_folder.mkdir(exist_ok=True)
 
-    now = datetime.datetime.now().isoformat().replace(":", "").replace(" ", "_")
+    now = utc_now().replace(tzinfo=None).isoformat().replace(":", "").replace(" ", "_")
     log_file_path = log_folder / f"{now}.log"
     jsonl_path = log_file_path.with_suffix(".results.json")
     file_handler = RichHandler(

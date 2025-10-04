@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import datetime
 import logging
 from typing import TYPE_CHECKING, Any, Self
 
@@ -14,10 +13,11 @@ from bunkr_uploader.api._exceptions import ChunkUploadError, FileUploadError
 from bunkr_uploader.api._files import Chunk, File
 from bunkr_uploader.api._responses import UploadResponse
 
-from .logger import write_to_jsonl
+from .logger import utc_now, write_to_jsonl
 from .progress import new_progress
 
 if TYPE_CHECKING:
+    import datetime
     from collections.abc import AsyncIterator, Generator, Iterable
     from pathlib import Path
 
@@ -29,15 +29,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _utc_now() -> datetime.datetime:
-    return datetime.datetime.now().replace(microsecond=0).astimezone(datetime.UTC)
-
-
 @dataclasses.dataclass(slots=True)
 class FileUploadResult:
     file: File
     result: UploadResponse
-    timestamp: datetime.datetime = dataclasses.field(init=False, default_factory=_utc_now)
+    timestamp: datetime.datetime = dataclasses.field(init=False, default_factory=utc_now)
 
     def dumps(self) -> str:
         return _file_upload_result_serializer(self).decode()
