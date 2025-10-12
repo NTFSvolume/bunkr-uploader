@@ -1,0 +1,6 @@
+aiofiles
+pydantic
+yarl
+rich
+pydantic-settings
+aiohttp
