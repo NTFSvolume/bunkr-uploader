@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class Chunk:
-    data: bytes
+    data: bytes | memoryview[int]
     index: int
     total: int
     offset: int

@@ -28,12 +28,12 @@ class BunkrAPI:
     token: str
     chunk_size: int = 0
     _session: ClientSession | None = dataclasses.field(init=False, default=None)
-    _info: responses.Check | None = dataclasses.field(init=False, default=None)
+    _info: responses.Info | None = dataclasses.field(init=False, default=None)
 
-    async def _async_post_init_(self) -> None:
-        self._info = await self.check()
-        self.chunk_size = self.chunk_size or self._info.chunkSize.default
-        assert 0 < self.chunk_size <= self._info.chunkSize.max
+    async def connect(self) -> None:
+        info = await self.check()
+        self.chunk_size = self.chunk_size or info.chunkSize.max
+        assert 0 < self.chunk_size <= info.chunkSize.max
         await self.verify_token()
 
     async def __aenter__(self) -> Self:
@@ -107,11 +107,11 @@ class BunkrAPI:
                     new.add(key)
         return combined
 
-    async def check(self) -> responses.Check:
-        if self._info:
-            return self._info
-        response = await self._request("check")
-        return responses.Check.model_validate(response)
+    async def check(self) -> responses.Info:
+        if not self._info:
+            response = await self._request("check")
+            self._info = responses.Info.model_validate(response)
+        return self._info
 
     async def node(self) -> responses.Node:
         response = await self._request("node")
@@ -161,6 +161,7 @@ class BunkrAPI:
         file.album_id = album_id = file.album_id or album_id
         info = await self.check()
         assert file.size <= info.maxSize
+        assert self.chunk_size
         try:
             async with aiofiles.open(file.path, "rb") as file_data:
                 chunk_data = await file_data.read(self.chunk_size)

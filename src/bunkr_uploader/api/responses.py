@@ -94,7 +94,7 @@ class VerifyToken(_Response):
     username: str
 
 
-class Check(_Response):
+class Info(_Response):
     chunkSize: ChunkSize
     defaultTemporaryUploadAge: int
     enableUserAccounts: bool
