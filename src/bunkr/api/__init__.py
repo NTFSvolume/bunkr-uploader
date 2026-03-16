@@ -10,9 +10,9 @@ from aiohttp import ClientSession, ClientTimeout, FormData
 from multidict import CIMultiDict
 from yarl import URL
 
-from bunkr_uploader.api import responses
-from bunkr_uploader.api.errors import ChunkUploadError, FileUploadError
-from bunkr_uploader.api.file import Chunk, FileUpload
+from bunkr.api import responses
+from bunkr.api.errors import ChunkUploadError, FileUploadError
+from bunkr.api.file import Chunk, FileUpload
 
 _API_ENTRYPOINT = URL("https://dash.bunkr.cr/api/")
 _SEMAPHORE = asyncio.Semaphore(50)

@@ -104,7 +104,7 @@ wheels = [
 ]
 
 [[package]]
-name = "bunkr-uploader"
+name = "bunkr"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

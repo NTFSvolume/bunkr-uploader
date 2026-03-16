@@ -4,10 +4,10 @@ from typing import Annotated
 
 from cyclopts import App, Parameter
 
-from bunkr_uploader import __package_name__, __version__
-from bunkr_uploader.client import BunkrUploader
-from bunkr_uploader.config import Config
-from bunkr_uploader.logger import setup_logger
+from bunkr import __package_name__, __version__
+from bunkr.client import BunkrUploader
+from bunkr.config import Config
+from bunkr.logger import setup_logger
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ app = App(
 )
 
 
-@app.default()
+@app.command()
 async def upload(
     path: Annotated[Path, Parameter(help="File or directory to look for files in to upload")],
     /,
@@ -41,6 +41,7 @@ async def upload(
     ] = False,
     config: Annotated[Config, Parameter(name="*")],
 ) -> None:
+    """Upload a file or files to bunkr"""
     await _upload(path, recurse, config)
 
 

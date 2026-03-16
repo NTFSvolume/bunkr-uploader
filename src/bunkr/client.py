@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import TypeAdapter
 
-from bunkr_uploader import aio
-from bunkr_uploader.api import BunkrAPI
-from bunkr_uploader.api.errors import ChunkUploadError, FileUploadError
-from bunkr_uploader.api.file import Chunk, FileUpload
-from bunkr_uploader.api.responses import Info, UploadResponse
-from bunkr_uploader.logger import utc_now
-from bunkr_uploader.progress import new_progress
+from bunkr import aio
+from bunkr.api import BunkrAPI
+from bunkr.api.errors import ChunkUploadError, FileUploadError
+from bunkr.api.file import Chunk, FileUpload
+from bunkr.api.responses import Info, UploadResponse
+from bunkr.logger import utc_now
+from bunkr.progress import new_progress
 
 if TYPE_CHECKING:
     import datetime
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from rich.progress import Progress
     from yarl import URL
 
-    from bunkr_uploader.config import Config
+    from bunkr.config import Config
 
 
 logger = logging.getLogger(__name__)

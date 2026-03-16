@@ -1,5 +1,5 @@
 [project]
-name = "bunkr_uploader"
+name = "bunkr"
 authors = [
     {name = "NTFSvolume"}
 ]
@@ -15,7 +15,8 @@ requires-python = ">=3.11"
 version = "0.1.0"
 
 [project.scripts]
-bunkr_uploader = "bunkr_uploader.__main__:app"
+bunkr = "bunkr.__main__:app"
+bunkr_uploader = "bunkr.__main__:app"
 
 [tool.ruff]
 line-length = 100
