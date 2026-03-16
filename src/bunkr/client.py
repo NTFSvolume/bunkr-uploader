@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import datetime  # noqa: TC003
 import logging
-from typing import TYPE_CHECKING, Any, Self
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from pydantic import TypeAdapter
 
@@ -16,7 +18,6 @@ from bunkr.logger import utc_now
 from bunkr.progress import new_progress
 
 if TYPE_CHECKING:
-    import datetime
     from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterable
     from pathlib import Path
 
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+_file_upload_result_serializer = None
 
 
 @dataclasses.dataclass(slots=True)
@@ -35,11 +37,19 @@ class FileUploadResult:
     result: UploadResponse
     timestamp: datetime.datetime = dataclasses.field(init=False, default_factory=utc_now)
 
+    _serializer: ClassVar[Callable[[Self], bytes] | None] = None
+
+    @classmethod
+    def serializer(cls) -> Callable[[Self], bytes]:
+        if cls._serializer is None:
+            cls._serializer = TypeAdapter(cls).dump_json
+        return cls._serializer
+
     def __str__(self) -> str:
-        return _file_upload_result_serializer(self).decode()
+        return self.serializer()(self).decode()
 
 
-_file_upload_result_serializer = TypeAdapter(FileUploadResult).dump_json
+_file_upload_result_serializer: Callable[..., bytes] | None = None
 
 
 @dataclasses.dataclass(slots=True)
@@ -66,7 +76,7 @@ class BunkrUploader:
         """Upload a single chunk with retry mechanism."""
         for attempt in range(self.config.chunk_retries):
             msg = (
-                f"uploading chunk {chunk.index} of file '{file.original_name}'"
+                f"uploading chunk {chunk.index + 1} of file '{file.original_name}'"
                 f" (attempt {attempt + 1}/{self.config.chunk_retries})"
             )
             logger.info(msg)
@@ -75,7 +85,7 @@ class BunkrUploader:
                 return True
 
             except ChunkUploadError as e:
-                if attempt < self.config.chunk_retries:
+                if attempt < self.config.chunk_retries - 1:
                     logger.error(str(e))
                     await asyncio.sleep(self.config.delay)
                     continue
@@ -104,7 +114,7 @@ class BunkrUploader:
         info = await self._api.check()
         for attempt in range(self.config.retries):
             try:
-                if file.size <= info.maxSize:
+                if file.size <= info.chunkSize.max:
                     return await self._api.direct_upload(file, server)
 
                 async for chunk in self._chunked_read(file):
@@ -114,7 +124,7 @@ class BunkrUploader:
 
             except FileUploadError as e:
                 if attempt < self.config.retries - 1:
-                    msg = f"{e} (attempt {attempt + 1}/{self.config.retries})"
+                    msg = f"{e.__cause__ or e} (attempt {attempt + 1}/{self.config.retries})"
                     logger.error(msg)
                     await asyncio.sleep(self.config.delay)
                     continue
@@ -122,7 +132,7 @@ class BunkrUploader:
                 msg = (
                     f"Skipping upload of '{file.path}' after {self.config.retries} failed attempts"
                 )
-                logger.exception(msg)
+                logger.error(msg, exc_info=e.__cause__ or e)
 
         failed_file_resp = file.as_response()
         return UploadResponse(success=False, files=[failed_file_resp])
@@ -177,8 +187,8 @@ class BunkrUploader:
 
         tasks: list[asyncio.Task[FileUploadResult | None]] = []
 
-        async with asyncio.TaskGroup() as tg:
-            with self._progress:
+        with self._progress:
+            async with asyncio.TaskGroup() as tg:
                 for file in files_to_upload:
                     _ = await self._sem.acquire()
                     tasks.append(
@@ -191,7 +201,7 @@ class BunkrUploader:
         file.album_id = album_id
         try:
             server = await self._request_upload_server()
-            logger.info(f"Using {server = } for upload of '{file.path}'")
+            logger.info(f"Using {server = !s} for upload of '{file.path}'")
             response = await self._upload_file(file, server)
         except Exception:
             logger.exception(f"Upload of '{file.path}' failed")

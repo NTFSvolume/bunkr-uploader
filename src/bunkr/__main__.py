@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from cyclopts import App, Parameter
+from rich.traceback import install
 
 from bunkr import __package_name__, __version__
 from bunkr.client import BunkrUploader
@@ -12,8 +13,11 @@ from bunkr.logger import setup_logger
 logger = logging.getLogger(__name__)
 
 
+install(width=200)
+
+
 async def _upload(path: Path, recurse: bool, config: Config) -> None:
-    async with setup_logger(logger) as json_logger:
+    async with setup_logger() as json_logger:
         logger.debug(f'Uploading "{path}"')
         logger.debug(f"Using params: \n {config.model_dump_json(indent=4)}")
         async with BunkrUploader(config, upload_callback=json_logger) as client:

@@ -7,7 +7,7 @@ import mimetypes
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from .responses import FileResponse
+from bunkr.api.responses import FileResponse
 
 if TYPE_CHECKING:
     from pathlib import Path

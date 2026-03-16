@@ -20,4 +20,5 @@ def new_progress() -> Progress:
         TransferSpeedColumn(),
         "━",
         TimeRemainingColumn(),
+        expand=True,
     )

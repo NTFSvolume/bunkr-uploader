@@ -47,7 +47,6 @@ class BunkrAPI:
     def session(self) -> ClientSession:
         if self._session is None:
             self._session = ClientSession(
-                _API_ENTRYPOINT,
                 headers={
                     "Accept": "application/json, text/plain",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0",
@@ -69,12 +68,13 @@ class BunkrAPI:
         **json: Any,
     ) -> dict[str, Any]:
         method = "POST" if (form or json) else "GET"
+        url = _API_ENTRYPOINT / path_or_url if isinstance(path_or_url, str) else path_or_url
 
         async with (
             _SEMAPHORE,
             self.session.request(
                 method,
-                path_or_url,
+                url,
                 data=form,
                 json=json or None,
                 headers=self._prepare_headers(headers),
@@ -184,6 +184,7 @@ class BunkrAPI:
             form = _create_chunk_form(file, chunk, self.chunk_size)
             result = await self._request(server / "upload", form=form)
         except Exception as e:
+            logger.exception("")
             raise ChunkUploadError(file, chunk) from e
 
         if not result["success"]:

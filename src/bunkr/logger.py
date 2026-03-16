@@ -32,15 +32,14 @@ def utc_now() -> datetime.datetime:
 
 
 @contextlib.asynccontextmanager
-async def setup_logger(
-    logger: logging.Logger,
-) -> AsyncGenerator[Callable[[object], None]]:
+async def setup_logger() -> AsyncGenerator[Callable[[object], None]]:
+    logger = logging.getLogger("bunkr")
     logger.setLevel(logging.DEBUG)
     console_handler = RichHandler(
         show_time=False,
         rich_tracebacks=False,
         tracebacks_show_locals=False,
-        level=20,
+        level=logging.WARNING,
         console=_CONSOLE,
     )
     logger.addHandler(console_handler)
@@ -50,7 +49,7 @@ async def setup_logger(
 
     now = utc_now().replace(tzinfo=None).isoformat().replace(":", "").replace(" ", "_")
     log_file_path = log_folder / f"{now}.log"
-    jsonl_path = log_file_path.with_suffix(".results.json")
+    jsonl_path = log_file_path.with_suffix(".results.jsonl")
     with log_file_path.open("w", encoding="utf8") as file_out:
         file_handler = RichHandler(
             show_time=True,

@@ -11,7 +11,7 @@ class BunkrUploaderError(Exception): ...
 
 class ChunkUploadError(BunkrUploaderError):
     def __init__(self, file: FileUpload, chunk: Chunk) -> None:
-        self.message = f"Failed uploading chunk #{chunk.index + 1}/{chunk.total} of {file.uuid}({file.original_name})"
+        self.message = f"Failed uploading chunk #{chunk.index + 1}/{chunk.total} of {file.uuid} ('{file.original_name}')"
         super().__init__(self.message)
 
 
