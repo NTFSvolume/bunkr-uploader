@@ -17,7 +17,7 @@ async def _upload(path: Path, recurse: bool, config: Config) -> None:
         logger.debug(f'Uploading "{path}"')
         logger.debug(f"Using params: \n {config.model_dump_json(indent=4)}")
         async with BunkrUploader(config, upload_callback=json_logger) as client:
-            results = await client.upload(path, recurse, album_name=config.album_name)
+            results = await client.upload(path, recurse)
             for result in results:
                 info = f"success: {result.result.success}, url: {result.result.files[0].url}"
                 logger.info(f"{result.file.original_name}: {info}")

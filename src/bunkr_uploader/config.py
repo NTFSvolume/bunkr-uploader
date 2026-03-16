@@ -11,7 +11,7 @@ class Config(BaseModel, defer_build=True):
     album_name: Annotated[str | None, Parameter(alias="-n")] = None
     "Name to use for album. If an album with this name already exists, add the files to that album"
 
-    concurrent_uploads: Annotated[int | None, Parameter(alias="-c")] = Field(2, gt=0, le=50)
+    concurrent_uploads: Annotated[int, Parameter(alias="-c")] = Field(2, gt=0, le=50)
     "Maximum parallel uploads to do at once"
 
     chunk_size: ByteSize | None = Field(default=None, gt=0)

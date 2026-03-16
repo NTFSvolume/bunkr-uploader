@@ -25,7 +25,7 @@ _MAX_FILENAME_LENGTH: int = 240
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
-class File:
+class FileUpload:
     path: Path
     original_name: str
     upload_name: str
@@ -39,7 +39,7 @@ class File:
     upload_success: bool = dataclasses.field(init=False, default=False)
 
     @staticmethod
-    def from_path(path: Path) -> File:
+    def from_path(path: Path) -> FileUpload:
         original_name = upload_name = path.name
 
         if len(upload_name) > _MAX_FILENAME_LENGTH:
@@ -47,7 +47,7 @@ class File:
             new_stem = upload_name[:max_stem_length] + ".."
             upload_name = f"{new_stem}.{path.suffix}"
 
-        return File(
+        return FileUpload(
             path=path,
             original_name=original_name,
             upload_name=upload_name,
