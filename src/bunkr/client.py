@@ -10,19 +10,17 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from pydantic import TypeAdapter
 
-from bunkr import aio
+from bunkr import aio, progress
 from bunkr.api import BunkrAPI
 from bunkr.api.errors import ChunkUploadError, FileUploadError
 from bunkr.api.responses import UploadResponse
 from bunkr.api.upload import Chunk, FileUpload
 from bunkr.logger import utc_now
-from bunkr.progress import new_progress
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
     from pathlib import Path
 
-    from rich.progress import Progress
     from yarl import URL
 
     from bunkr.config import Config
@@ -57,7 +55,6 @@ class BunkrUploader:
 
     _api: BunkrAPI = dataclasses.field(init=False)
     _sem: asyncio.BoundedSemaphore = dataclasses.field(init=False)
-    _progress: Progress = dataclasses.field(init=False, default_factory=new_progress)
 
     def __post_init__(self) -> None:
         self._api = BunkrAPI(self.config.token, self.config.chunk_size or 0)
@@ -95,17 +92,14 @@ class BunkrUploader:
         """Iterate over file chunks."""
         n_chunks = (upload.size + self._api.chunk_size - 1) // self._api.chunk_size
         index = 0
-        task_id = self._progress.add_task(upload.original_name, total=upload.size)
-        try:
+        with progress.new_upload(upload.original_name, upload.size) as hook:
             async with aio.open(upload.path, mode="rb") as fp:
                 while data := await fp.read(self._api.chunk_size):
                     offset = self._api.chunk_size * index
                     mem_view = memoryview(data)
                     yield Chunk(mem_view, index, n_chunks, offset)
-                    self._progress.advance(task_id, len(mem_view))
+                    hook.advance(len(mem_view))
                     index += 1
-        finally:
-            self._progress.remove_task(task_id)
 
     async def _upload_file(self, upload: FileUpload, server: URL) -> UploadResponse:
         """Upload a file in chunks with retry mechanism."""
@@ -193,7 +187,7 @@ class BunkrUploader:
 
         tasks: list[asyncio.Task[FileUploadResult | None]] = []
 
-        with self._progress:
+        with progress.new_progress():
             async with asyncio.TaskGroup() as tg:
                 for file in files_to_upload:
                     _ = await self._sem.acquire()
