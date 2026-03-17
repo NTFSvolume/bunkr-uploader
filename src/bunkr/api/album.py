@@ -4,6 +4,7 @@ import dataclasses
 import datetime
 import json
 import re
+from html import unescape
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Self
@@ -89,13 +90,13 @@ class Album:
             return html[start:end]
 
         id_ = int(extr('albumID = "', '";'))
-        name = extr('<meta property="og:title" content="', '">')
+        name = unescape(extr('<meta property="og:title" content="', '">'))
 
         album_js = extr("window.albumFiles = ", "</script>")
         files = _decode_files(album_js[: album_js.rindex("];") + 1])
         return cls(id_, slug, name, tuple(files))
 
-    def __json__(self):
+    def __json__(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
     def __str__(self) -> str:
