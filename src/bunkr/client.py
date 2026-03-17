@@ -4,7 +4,6 @@ import asyncio
 import dataclasses
 import datetime  # noqa: TC003
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from pydantic import TypeAdapter
@@ -17,7 +16,7 @@ from bunkr.api.upload import Chunk, FileUpload
 from bunkr.logger import utc_now
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncGenerator, Callable
     from pathlib import Path
 
     from yarl import URL
@@ -74,9 +73,13 @@ class BunkrUploader:
 
     async def _chunked_upload(self, upload: FileUpload, server: URL) -> UploadResponse:
         with progress.new_upload(upload.original_name, upload.size) as hook:
-            async for chunk in _iter_chunked(upload, self._api.chunk_size):
-                _ = await self._upload_chunk(upload, server, chunk)
-                hook.advance(len(chunk.data))
+            chunk_gen = _iter_chunked(upload, self._api.chunk_size)
+            try:
+                async for chunk in chunk_gen:
+                    _ = await self._upload_chunk(upload, server, chunk)
+                    hook.advance(len(chunk.data))
+            finally:
+                await chunk_gen.aclose()
 
             return await self._api.finish_chunks(upload, server)
 
@@ -225,7 +228,7 @@ def _get_files(path: Path, *, recurse: bool) -> list[Path]:
     )
 
 
-async def _iter_chunked(upload: FileUpload, chunk_size: int) -> AsyncIterator[Chunk]:
+async def _iter_chunked(upload: FileUpload, chunk_size: int) -> AsyncGenerator[Chunk]:
     """Iterate over file chunks."""
     n_chunks = (upload.size + chunk_size - 1) // chunk_size
     index = 0
