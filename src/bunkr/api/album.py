@@ -4,45 +4,69 @@ import dataclasses
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Self
 
 from yarl import URL
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-_FILE_ATTRS = (
-    "id",
-    "name",
-    "original",
-    "slug",
-    "type",
-    "extension",
-    "size",
-    "timestamp",
-    "thumbnail",
-    "cdnEndpoint",
+
+@dataclasses.dataclass(slots=True)
+class File:
+    id: str
+    name: str
+    origina: str
+    slug: str
+    type: str
+    extension: str
+    size: int
+    timestamp: int
+    thumbnail: str
+    cdnEndpoint: str  # noqa: N815
+
+    src: URL | None = None
+
+    def __post_init__(self) -> None:
+        if self.thumbnail.count("https://") != 1:
+            return
+
+        if URL(self.thumbnail, encoded="%" in self.thumbnail).parts[1:2] != ("thumbs",):
+            return
+
+        src_str = self.thumbnail.replace("/thumbs/", "/")
+        src = (
+            URL(src_str, encoded="%" in src_str)
+            .with_suffix(Path(self.name).suffix)
+            .with_query(None)
+        )
+        if src.suffix.lower() not in _IMAGE_EXTS:
+            assert src.host
+            src = src.with_host(src.host.replace("i-", ""))
+        self.src = src
+
+
+_translation_map = MappingProxyType(
+    {f" {field.name}: ": f'"{field.name}": ' for field in dataclasses.fields(File)}
 )
+_escape_file_attrs = re.compile(
+    "|".join(sorted(_translation_map.keys(), key=len, reverse=True))
+).sub
 
 
-_translation_map = {f" {key}: ": f'"{key}": ' for key in _FILE_ATTRS}
-_find_files = re.compile("|".join(sorted(_translation_map.keys(), key=len, reverse=True))).sub
-
-
-def _fix_unicode(value: str) -> str:
-    return value.encode("raw_unicode_escape").decode("unicode-escape")
+def _fix_unicode(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.encode("raw_unicode_escape").decode("unicode-escape")
+    return value
 
 
 def _decode_files(text: str) -> Generator[File]:
-    content = _find_files(lambda m: _translation_map[m.group(0)], text.replace("\\'", "'"))
+    content = _escape_file_attrs(lambda m: _translation_map[m.group(0)], text.replace("\\'", "'"))
 
+    file: dict[str, Any]
     for file in json.loads(content):
-        yield File(
-            name=_fix_unicode(file.get("original") or file["name"]),
-            slug=_fix_unicode(file["slug"]),
-            thumbnail=_fix_unicode(file["thumbnail"]),
-            date=file["timestamp"],
-        )
+        yield File(**{k: _fix_unicode(v) for k, v in file.items()})
 
 
 @dataclasses.dataclass(slots=True, order=True)
@@ -65,32 +89,6 @@ class Album:
         album_js = extr("window.albumFiles = ", "</script>")
         files = _decode_files(album_js[: album_js.rindex("];") + 1])
         return cls(id_, slug, name, tuple(files))
-
-
-@dataclasses.dataclass(slots=True)
-class File:
-    name: str
-    thumbnail: str
-    date: str
-    slug: str
-    src: URL | None = None
-
-    def __post_init__(self) -> None:
-        if self.thumbnail.count("https://") != 1:
-            return
-
-        if URL(self.thumbnail, encoded="%" in self.thumbnail).parts[1:2] != ("thumbs",):
-            return
-
-        src_str = self.thumbnail.replace("/thumbs/", "/")
-        src = (
-            URL(src_str, encoded="%" in src_str)
-            .with_suffix(Path(self.name).suffix)
-            .with_query(None)
-        )
-        if src.suffix.lower() not in _IMAGE_EXTS:
-            src = src.with_host(src.host.replace("i-", ""))
-        self.src = src
 
 
 _IMAGE_EXTS = frozenset(
