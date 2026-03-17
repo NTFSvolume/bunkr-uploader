@@ -165,7 +165,7 @@ class BunkrAPI:
         )
         return CreateAlbumResponse.model_validate(response)
 
-    async def direct_upload(
+    async def upload(
         self,
         file: FileUpload,
         server: URL,

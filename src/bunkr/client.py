@@ -66,7 +66,21 @@ class BunkrUploader:
     async def __aexit__(self, *args: Any) -> None:
         await self._api.__aexit__(*args)
 
-    async def _upload_chunk(self, upload: FileUpload, server: URL, chunk: Chunk) -> bool:
+    async def _direct_upload(self, upload: FileUpload, server: URL) -> UploadResponse:
+        with progress.new_upload(upload.original_name, upload.size) as hook:
+            result = await self._api.upload(upload, server)
+            hook.advance(upload.size)
+            return result
+
+    async def _chunked_upload(self, upload: FileUpload, server: URL) -> UploadResponse:
+        with progress.new_upload(upload.original_name, upload.size) as hook:
+            async for chunk in _iter_chunked(upload, self._api.chunk_size):
+                _ = await self._upload_chunk(upload, server, chunk)
+                hook.advance(len(chunk.data))
+
+            return await self._api.finish_chunks(upload, server)
+
+    async def _upload_chunk(self, upload: FileUpload, server: URL, chunk: Chunk) -> None:
         """Upload a single chunk with retry mechanism."""
         for attempt in range(self.config.chunk_retries):
             msg = (
@@ -76,7 +90,6 @@ class BunkrUploader:
             logger.info(msg)
             try:
                 await self._api.upload_chunk(upload, server, chunk)
-                return True
 
             except ChunkUploadError as e:
                 if attempt < self.config.chunk_retries - 1:
@@ -85,33 +98,16 @@ class BunkrUploader:
                     continue
                 raise FileUploadError(upload) from e.__cause__
 
-        return False
-
-    async def _iter_chunked(self, upload: FileUpload) -> AsyncIterator[Chunk]:
-        """Iterate over file chunks."""
-        n_chunks = (upload.size + self._api.chunk_size - 1) // self._api.chunk_size
-        index = 0
-        with progress.new_upload(upload.original_name, upload.size) as hook:
-            async with aio.open(upload.path, mode="rb") as fp:
-                while data := await fp.read(self._api.chunk_size):
-                    offset = self._api.chunk_size * index
-                    mem_view = memoryview(data)
-                    yield Chunk(mem_view, index, n_chunks, offset)
-                    hook.advance(len(mem_view))
-                    index += 1
-
-    async def _upload_file(self, upload: FileUpload, server: URL) -> UploadResponse:
+    async def _upload(self, upload: FileUpload, server: URL) -> UploadResponse:
         """Upload a file in chunks with retry mechanism."""
         info = await self._api.check()
         for attempt in range(self.config.retries):
             try:
                 if upload.size <= info.chunkSize.max:
-                    return await self._api.direct_upload(upload, server)
+                    return await self._direct_upload(upload, server)
 
-                async for chunk in self._iter_chunked(upload):
-                    _ = await self._upload_chunk(upload, server, chunk)
-
-                return await self._api.finish_chunks(upload, server)
+                else:
+                    return await self._chunked_upload(upload, server)
 
             except FileUploadError as e:
                 cause = e.__cause__ or e
@@ -124,8 +120,7 @@ class BunkrUploader:
                 msg = f"Skipping upload of '{upload.path}' after {self.config.retries} failed attempt(s) ({str(cause)[:40]}"
                 logger.error(msg, exc_info=cause)
 
-        failed_file_resp = upload.as_response()
-        return UploadResponse(success=False, files=[failed_file_resp])
+        return UploadResponse(success=False, files=[upload.as_failed_resp()])
 
     async def _request_upload_server(self) -> URL:
         node_response = await self._api.node()
@@ -203,7 +198,7 @@ class BunkrUploader:
         try:
             server = await self._request_upload_server()
             logger.info(f"Using {server = !s} for upload of '{upload.path}'")
-            response = await self._upload_file(upload, server)
+            response = await self._upload(upload, server)
         except Exception:
             logger.exception(f"Upload of '{upload.path}' failed")
         else:
@@ -228,3 +223,15 @@ def _get_files(path: Path, *, recurse: bool) -> list[Path]:
     return sorted(
         (f for f in files_to_upload if f.is_file()), key=lambda p: p.as_posix().casefold()
     )
+
+
+async def _iter_chunked(upload: FileUpload, chunk_size: int) -> AsyncIterator[Chunk]:
+    """Iterate over file chunks."""
+    n_chunks = (upload.size + chunk_size - 1) // chunk_size
+    index = 0
+    async with aio.open(upload.path, mode="rb") as fp:
+        while data := await fp.read(chunk_size):
+            offset = chunk_size * index
+            mem_view = memoryview(data)
+            yield Chunk(mem_view, index, n_chunks, offset)
+            index += 1

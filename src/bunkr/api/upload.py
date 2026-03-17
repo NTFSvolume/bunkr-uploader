@@ -56,5 +56,5 @@ class FileUpload:
             uuid=str(uuid4()),
         )
 
-    def as_response(self) -> FileResponse:
+    def as_failed_resp(self) -> FileResponse:
         return FileResponse(name=self.uuid, url=None)
